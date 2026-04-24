@@ -1,1 +1,21 @@
+# --- Data Files ---
+# Chặn các file CSV gốc (vì quá nặng, gây lỗi GitHub)
+*.csv
+
+!Data/Dunnhumby/*.parquet
+
+# --- Python & Notebooks ---
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.virtualenvs/
+venv/
+env/
+
+# --- OS & IDE ---
+.DS_Store
+.vscode/
+.idea/
+*.log
 
