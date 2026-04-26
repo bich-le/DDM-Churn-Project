@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 # 1. Cấu hình đường dẫn 
-source_folder = 'Data/Raw/' 
+source_folder = '../Data/Raw/' 
 
 # 2. Lấy danh sách tất cả file CSV trong folder
 csv_files = [f for f in os.listdir(source_folder) if f.endswith('.csv')]
