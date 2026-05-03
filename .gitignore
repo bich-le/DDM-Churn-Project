@@ -1,6 +1,6 @@
 # --- Data Files ---
 # Chặn các file CSV gốc (vì quá nặng, gây lỗi GitHub)
-*.csv
+# *.csv
 
 !Data/Dunnhumby/*.parquet
 
@@ -12,6 +12,8 @@ __pycache__/
 .virtualenvs/
 venv/
 env/
+.jupyter_runtime/
+
 
 # --- OS & IDE ---
 .DS_Store
