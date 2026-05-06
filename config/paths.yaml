@@ -1,0 +1,47 @@
+project:
+  name: DDM-Churn-Project
+
+paths:
+  data_raw_dir: Data/Raw
+  data_processed_dir: Data/Processed
+  intermediate_features_dir: Data/Intermediate/features
+  intermediate_analysis_dir: Data/Intermediate/analysis
+  models_dir: models
+  notebooks_dir: notebooks
+  scripts_dir: scripts
+  visualization_exports_dir: visualization/exports
+  reports_internal_dir: reports/internal_briefs
+  reports_final_paper_dir: reports/final_paper
+
+inputs:
+  feature_table_csv: models/final_ML_features.csv
+  transaction_master_parquet: Data/Processed/transactions_master.parquet
+  customer_base_parquet: Data/Processed/customer_base_labeled.parquet
+  voucher_recommendations_csv: Data/Intermediate/market_basket/personalized_voucher_recommendations.csv
+
+modeling:
+  id_col: household_key
+  target_col: churn_flag
+  categorical_cols:
+    - Primary_Store_ID
+  cut_off_day: 651
+  test_size: 0.20
+  validation_size: 0.25
+  random_state: 42
+  f_beta: 2
+  n_estimators: 150
+  n_jobs: 1
+
+expected_profit_scenarios:
+  conservative:
+    gross_margin: 0.20
+    retention_lift: 0.03
+    treatment_cost: 5.0
+  base:
+    gross_margin: 0.25
+    retention_lift: 0.05
+    treatment_cost: 5.0
+  optimistic:
+    gross_margin: 0.30
+    retention_lift: 0.08
+    treatment_cost: 5.0

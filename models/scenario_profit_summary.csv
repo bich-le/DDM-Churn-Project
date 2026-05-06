@@ -1,0 +1,4 @@
+scenario,gross_margin,retention_lift,treatment_cost,profitable_customer_count,profitable_customer_share,total_expected_profit_if_target_positive_only,top_30pct_risk_customer_count,total_expected_profit_if_target_top_30pct_risk
+conservative,0.2,0.03,5.0,0,0.0,0.0,750,-3376.03466796875
+base,0.25,0.05,5.0,4,0.001600640256102441,1.466357707977295,750,-2970.90576171875
+optimistic,0.3,0.08,5.0,172,0.06882753101240496,223.53012084960938,750,-2254.13916015625

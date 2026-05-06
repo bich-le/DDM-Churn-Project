@@ -21,3 +21,13 @@ env/
 .idea/
 *.log
 
+reports/final_paper/README.md
+reports/internal_briefs/m5_pipeline_summary.json
+reports/internal_briefs/repo_input_validation.json
+reports/internal_briefs/M5_modeling_report_outline.md
+.gitignore
+.venv/Scripts/python.exe
+.venv/Scripts/pythonw.exe
+.venv/Lib/site-packages/workspace_root.pth
+.venv/Lib/site-packages/workspace_paths.pth
+.venv/pyvenv.cfg
