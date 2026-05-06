@@ -1,0 +1,4 @@
+feature_1,feature_2,correlation,abs_correlation,threshold,note
+IPT_mean,IPT_std,0.9560960289402965,0.9560960289402965,0.85,High numeric-feature correlation; review before interpreting coefficients/SHAP too strongly.
+Camp_Count_TypeB,Total_Campaigns_Received,0.8810943103535682,0.8810943103535682,0.85,High numeric-feature correlation; review before interpreting coefficients/SHAP too strongly.
+Camp_Count_TypeA,Total_Campaigns_Received,0.8663516616342989,0.8663516616342989,0.85,High numeric-feature correlation; review before interpreting coefficients/SHAP too strongly.

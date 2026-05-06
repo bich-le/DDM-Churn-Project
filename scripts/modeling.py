@@ -33,7 +33,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier, RandomForestRegressor
 from sklearn.isotonic import IsotonicRegression
-from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.model_selection import ParameterSampler, StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
@@ -45,7 +45,10 @@ from scripts.evaluation import (
     evaluate_proba,
     extract_feature_importance,
     make_one_hot_encoder,
+    profit_threshold_analysis,
+    ranking_decile_performance,
     regression_metrics,
+    top_k_precision_summary,
 )
 from scripts.utils import ensure_project_structure, find_project_root, load_config, resolve_project_paths
 
@@ -385,6 +388,222 @@ def export_feature_importance(champion_model: Any, champion_cols: List[str], out
     return importance
 
 
+
+
+def infer_feature_group(feature: str) -> str:
+    """Infer a lightweight feature group for audit/readability only."""
+    f = str(feature).lower()
+    if "recency" in f or "inactive" in f or "days_since" in f:
+        return "recency_inactivity"
+    if "freq" in f or "frequency" in f or "txn" in f or "visit" in f:
+        return "frequency_activity"
+    if "monetary" in f or "sales" in f or "spend" in f or "basket" in f or "value" in f:
+        return "monetary_value"
+    if "promo" in f or "coupon" in f or "campaign" in f or "discount" in f:
+        return "promotion_campaign"
+    if "ipt" in f or "interval" in f:
+        return "purchase_cadence"
+    if "slope" in f or "trend" in f or "rolling" in f:
+        return "temporal_trend"
+    if "brand" in f:
+        return "brand_preference"
+    if "store" in f:
+        return "store_categorical"
+    return "other_behavioral_feature"
+
+
+def infer_expected_source(feature: str) -> str:
+    """Infer expected upstream source table; M4 must confirm in lineage audit."""
+    f = str(feature).lower()
+    if "campaign" in f:
+        return "campaign tables / marketing exposure before cut-off"
+    if "coupon" in f or "promo" in f or "discount" in f:
+        return "coupon/transaction promotion tables before cut-off"
+    if "store" in f:
+        return "transaction/store history before cut-off"
+    return "transactions_master before cut-off"
+
+
+def create_feature_lineage_audit_scaffold(
+    features: pd.DataFrame,
+    paths: Dict[str, Path],
+    id_col: str,
+    target_col: str,
+    cut_off_day: int,
+    categorical_cols: List[str],
+) -> pd.DataFrame:
+    """Create a feature lineage template without over-claiming upstream confirmation.
+
+    M5 cannot prove every M4 feature's construction from the final table alone.
+    This scaffold makes that limitation explicit and gives M4 a concrete table to
+    fill/confirm before final submission.
+    """
+    rows: List[Dict[str, Any]] = []
+    for col in features.columns:
+        if col == id_col:
+            rows.append({
+                "column_name": col,
+                "role": "identifier_not_model_feature",
+                "feature_group": "id",
+                "expected_source_table": "customer/household id",
+                "expected_window_start_day": np.nan,
+                "expected_window_end_day_exclusive": np.nan,
+                "uses_post_cutoff_data_expected": False,
+                "actual_window_confirmed_by_m5": False,
+                "leakage_risk": "none_for_training_because_excluded",
+                "owner_to_confirm": "M4/Data Integration",
+                "status": "excluded_from_model",
+                "notes": "Kept only for mapping predictions back to real households.",
+            })
+            continue
+        if col == target_col:
+            rows.append({
+                "column_name": col,
+                "role": "target_label",
+                "feature_group": "target",
+                "expected_source_table": "customer_base_labeled / churn labeling logic",
+                "expected_window_start_day": cut_off_day,
+                "expected_window_end_day_exclusive": cut_off_day + 60,
+                "uses_post_cutoff_data_expected": True,
+                "actual_window_confirmed_by_m5": False,
+                "leakage_risk": "target_only_not_feature",
+                "owner_to_confirm": "M1/M4",
+                "status": "used_as_label_only",
+                "notes": "Target may use prediction window; must never be included as feature.",
+            })
+            continue
+        group = infer_feature_group(col)
+        rows.append({
+            "column_name": col,
+            "role": "model_feature",
+            "feature_group": group,
+            "expected_source_table": infer_expected_source(col),
+            "expected_window_start_day": 0,
+            "expected_window_end_day_exclusive": cut_off_day,
+            "uses_post_cutoff_data_expected": False,
+            "actual_window_confirmed_by_m5": False,
+            "leakage_risk": "medium_requires_M4_lineage_confirmation" if group in {"temporal_trend", "promotion_campaign", "purchase_cadence"} else "low_to_medium_requires_M4_confirmation",
+            "owner_to_confirm": "M4 Feature Engineering",
+            "status": "needs_M4_confirmation",
+            "notes": "M5 expects this feature to be computed strictly before cut-off, but cannot fully prove lineage from the delivered feature table alone.",
+        })
+    audit = pd.DataFrame(rows)
+    audit.to_csv(paths["models_dir"] / "feature_lineage_audit_template.csv", index=False)
+
+    high_risk_count = int((audit["leakage_risk"].astype(str).str.contains("medium", case=False, na=False)).sum())
+    md = f"""# M4 → M5 Feature Lineage Audit Scaffold
+
+## Purpose
+
+This file documents the current M5 assumption about the M4 feature table. M5 uses the delivered feature table as-is and does **not** rebuild M4 features. Therefore, M5 cannot fully prove upstream feature lineage from the final table alone.
+
+## Current cut-off assumption
+
+- Observation window expected for model features: `DAY < {cut_off_day}`
+- Prediction/value window used for labels and value targets: `DAY >= {cut_off_day}`
+
+## Files generated
+
+- `models/feature_lineage_audit_template.csv`
+
+## How to use this audit
+
+M4 should confirm each feature's actual source table and time window. Features marked as temporal, promotion/campaign, or purchase-cadence related receive extra caution because they are more likely to accidentally use post-cutoff information.
+
+## Current status
+
+- Total columns audited: {len(audit)}
+- Columns requiring M4 confirmation: {int((audit['status'] == 'needs_M4_confirmation').sum())}
+- Medium-risk feature-lineage rows: {high_risk_count}
+
+## Important limitation
+
+This scaffold is not proof that all features are leakage-free. It is a handoff checklist for M4/M5 to close before final submission.
+"""
+    (paths["reports_internal_dir"] / "M4_M5_feature_lineage_audit.md").write_text(md, encoding="utf-8")
+    return audit
+
+
+def export_multicollinearity_and_correlation_audit(
+    features: pd.DataFrame,
+    feature_cols: List[str],
+    categorical_cols: List[str],
+    paths: Dict[str, Path],
+    corr_threshold: float = 0.85,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Export numeric-feature VIF and high-correlation pair audits.
+
+    This is primarily for interpretability and linear-model stability. It does
+    not automatically drop features because feature removal should be agreed
+    with M4 and revalidated.
+    """
+    numeric_cols = [c for c in feature_cols if c not in categorical_cols and pd.api.types.is_numeric_dtype(features[c])]
+    X = features[numeric_cols].copy().replace([np.inf, -np.inf], np.nan)
+    # Drop columns with no usable variance.
+    usable_cols = [c for c in X.columns if X[c].notna().sum() >= 3 and X[c].nunique(dropna=True) > 1]
+    X = X[usable_cols].fillna(X[usable_cols].median(numeric_only=True)) if usable_cols else pd.DataFrame(index=features.index)
+
+    vif_rows: List[Dict[str, Any]] = []
+    if len(usable_cols) >= 2:
+        for col in usable_cols:
+            other_cols = [c for c in usable_cols if c != col]
+            try:
+                model = LinearRegression()
+                model.fit(X[other_cols], X[col])
+                r2 = float(model.score(X[other_cols], X[col]))
+                if r2 >= 0.999999:
+                    vif = np.inf
+                else:
+                    vif = float(1.0 / max(1.0 - r2, 1e-12))
+                if np.isinf(vif) or vif >= 10:
+                    risk = "high"
+                elif vif >= 5:
+                    risk = "medium"
+                else:
+                    risk = "low"
+                vif_rows.append({"feature": col, "vif": vif, "r_squared_against_other_numeric_features": r2, "multicollinearity_risk": risk})
+            except Exception as exc:
+                vif_rows.append({"feature": col, "vif": np.nan, "r_squared_against_other_numeric_features": np.nan, "multicollinearity_risk": "error", "error": str(exc)})
+    else:
+        for col in usable_cols:
+            vif_rows.append({"feature": col, "vif": np.nan, "r_squared_against_other_numeric_features": np.nan, "multicollinearity_risk": "not_enough_numeric_features"})
+    vif_df = pd.DataFrame(vif_rows).sort_values("vif", ascending=False, na_position="last") if vif_rows else pd.DataFrame(columns=["feature", "vif", "r_squared_against_other_numeric_features", "multicollinearity_risk"])
+    vif_df.to_csv(paths["models_dir"] / "multicollinearity_vif.csv", index=False)
+
+    pair_rows: List[Dict[str, Any]] = []
+    if len(usable_cols) >= 2:
+        corr = X.corr(numeric_only=True)
+        for i, c1 in enumerate(usable_cols):
+            for c2 in usable_cols[i + 1:]:
+                val = corr.loc[c1, c2]
+                if pd.notna(val) and abs(float(val)) >= corr_threshold:
+                    pair_rows.append({
+                        "feature_1": c1,
+                        "feature_2": c2,
+                        "correlation": float(val),
+                        "abs_correlation": abs(float(val)),
+                        "threshold": corr_threshold,
+                        "note": "High numeric-feature correlation; review before interpreting coefficients/SHAP too strongly.",
+                    })
+    corr_pairs = pd.DataFrame(pair_rows).sort_values("abs_correlation", ascending=False) if pair_rows else pd.DataFrame(columns=["feature_1", "feature_2", "correlation", "abs_correlation", "threshold", "note"])
+    corr_pairs.to_csv(paths["models_dir"] / "numeric_feature_correlation_pairs.csv", index=False)
+
+    try:
+        if len(usable_cols) >= 2:
+            corr = X.corr(numeric_only=True)
+            plt.figure(figsize=(max(8, min(16, len(usable_cols) * 0.45)), max(6, min(14, len(usable_cols) * 0.35))))
+            plt.imshow(corr, aspect="auto")
+            plt.xticks(range(len(usable_cols)), usable_cols, rotation=90, fontsize=7)
+            plt.yticks(range(len(usable_cols)), usable_cols, fontsize=7)
+            plt.colorbar(label="Correlation")
+            plt.title("Numeric Feature Correlation Heatmap")
+            plt.tight_layout()
+            plt.savefig(paths["visualization_exports_dir"] / "m5_feature_correlation_heatmap.png", dpi=160)
+            plt.close()
+    except Exception as exc:
+        print(f"[M5] Correlation heatmap skipped: {exc}")
+    return vif_df, corr_pairs
+
 def build_discounted_value_labels(features: pd.DataFrame, paths: Dict[str, Path], id_col: str, cut_off_day: int, prediction_horizon_days: int, annual_discount_rate: float) -> pd.DataFrame:
     txn_path = paths["transaction_master_parquet"]
     if not txn_path.exists():
@@ -559,7 +778,325 @@ def apply_expected_profit(pred: pd.DataFrame, scenario_grid: pd.DataFrame, paths
     return pred, summary, sensitivity
 
 
-def score_customers(features: pd.DataFrame, value_labels: pd.DataFrame, churn_model: Any, churn_cols: List[str], churn_threshold: float, active_model: Any, value_model: Any, value_model_name: str, feature_cols: List[str], id_col: str, target_col: str, scenarios: Dict[str, Dict[str, float]], paths: Dict[str, Path], cut_off_day: int, discount_rate: float, active_model_name: str, champion_name: str, calibration_method: str) -> pd.DataFrame:
+
+
+def export_value_model_residual_diagnostics(pred: pd.DataFrame, paths: Dict[str, Path]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Export residual diagnostics for the two-part discounted value model."""
+    df = pred.copy()
+    rows: List[Dict[str, Any]] = []
+    if "discounted_future_revenue_60d" in df.columns and "predicted_expected_discounted_value_60d" in df.columns:
+        actual = df["discounted_future_revenue_60d"].fillna(0.0).astype(float)
+        pred_expected = df["predicted_expected_discounted_value_60d"].fillna(0.0).astype(float)
+        residual = actual - pred_expected
+        abs_residual = residual.abs()
+        rows.append({
+            "model_component": "two_part_expected_discounted_value_all_customers",
+            "n_rows": int(len(df)),
+            "mean_actual": float(actual.mean()),
+            "mean_predicted": float(pred_expected.mean()),
+            "mean_residual_actual_minus_predicted": float(residual.mean()),
+            "mae": float(abs_residual.mean()),
+            "rmse": float(np.sqrt(np.mean(np.square(residual)))),
+            "median_abs_error": float(abs_residual.median()),
+            "p90_abs_error": float(abs_residual.quantile(0.90)),
+            "p95_abs_error": float(abs_residual.quantile(0.95)),
+            "underprediction_rate": float((residual > 0).mean()),
+            "overprediction_rate": float((residual < 0).mean()),
+            "note": "Residuals are on discounted 60-day revenue scale; large errors in high-value tail should be reviewed before profit deployment.",
+        })
+    if "future_active_flag" in df.columns and "predicted_discounted_value_60d_if_active" in df.columns:
+        active = df[df["future_active_flag"].fillna(0).astype(int) == 1].copy()
+        if not active.empty:
+            actual_active = active["discounted_future_revenue_60d"].fillna(0.0).astype(float)
+            pred_active = active["predicted_discounted_value_60d_if_active"].fillna(0.0).astype(float)
+            res_active = actual_active - pred_active
+            abs_active = res_active.abs()
+            rows.append({
+                "model_component": "conditional_value_if_future_active",
+                "n_rows": int(len(active)),
+                "mean_actual": float(actual_active.mean()),
+                "mean_predicted": float(pred_active.mean()),
+                "mean_residual_actual_minus_predicted": float(res_active.mean()),
+                "mae": float(abs_active.mean()),
+                "rmse": float(np.sqrt(np.mean(np.square(res_active)))),
+                "median_abs_error": float(abs_active.median()),
+                "p90_abs_error": float(abs_active.quantile(0.90)),
+                "p95_abs_error": float(abs_active.quantile(0.95)),
+                "underprediction_rate": float((res_active > 0).mean()),
+                "overprediction_rate": float((res_active < 0).mean()),
+                "note": "Conditional spend model is evaluated only among customers with future revenue > 0.",
+            })
+    summary = pd.DataFrame(rows)
+    summary.to_csv(paths["models_dir"] / "value_model_residual_summary.csv", index=False)
+
+    decile_rows: List[Dict[str, Any]] = []
+    if "predicted_expected_discounted_value_60d" in df.columns and "discounted_future_revenue_60d" in df.columns:
+        tmp = df[["predicted_expected_discounted_value_60d", "discounted_future_revenue_60d", "future_active_flag"]].copy()
+        tmp["predicted_value_decile"] = pd.qcut(
+            tmp["predicted_expected_discounted_value_60d"].rank(method="first", ascending=False),
+            q=10,
+            labels=list(range(1, 11)),
+        ).astype(int)
+        tmp["residual"] = tmp["discounted_future_revenue_60d"].fillna(0.0) - tmp["predicted_expected_discounted_value_60d"].fillna(0.0)
+        tmp["abs_residual"] = tmp["residual"].abs()
+        diag = (
+            tmp.groupby("predicted_value_decile")
+            .agg(
+                customer_count=("discounted_future_revenue_60d", "size"),
+                actual_active_rate=("future_active_flag", "mean"),
+                mean_actual_discounted_value=("discounted_future_revenue_60d", "mean"),
+                mean_predicted_expected_discounted_value=("predicted_expected_discounted_value_60d", "mean"),
+                mean_residual=("residual", "mean"),
+                mae=("abs_residual", "mean"),
+                median_abs_error=("abs_residual", "median"),
+            )
+            .reset_index()
+            .sort_values("predicted_value_decile")
+        )
+    else:
+        diag = pd.DataFrame()
+    diag.to_csv(paths["models_dir"] / "value_model_decile_diagnostics.csv", index=False)
+    return summary, diag
+
+def export_ranking_and_profit_diagnostics(
+    pred: pd.DataFrame,
+    paths: Dict[str, Path],
+    top_k_shares: Iterable[float],
+    decile_count: int,
+) -> None:
+    """Export ranking-quality and profit-threshold diagnostics for business review."""
+    score_specs: List[Tuple[str, str]] = [("p_churn_calibrated", "p_churn_calibrated")]
+    if "expected_incremental_profit_base" in pred.columns:
+        score_specs.append(("expected_incremental_profit_base", "expected_incremental_profit_base"))
+
+    decile_tables: List[pd.DataFrame] = []
+    topk_tables: List[pd.DataFrame] = []
+    for col, score_name in score_specs:
+        if col not in pred.columns:
+            continue
+        decile = ranking_decile_performance(
+            pred["actual_churn_flag"], pred[col], n_deciles=decile_count, score_name=score_name
+        )
+        if not decile.empty:
+            decile.insert(0, "ranking_score", score_name)
+            decile_tables.append(decile)
+        topk = top_k_precision_summary(
+            pred["actual_churn_flag"], pred[col], top_k_shares=top_k_shares, score_name=score_name
+        )
+        if not topk.empty:
+            topk_tables.append(topk)
+
+    if decile_tables:
+        pd.concat(decile_tables, ignore_index=True).to_csv(paths["models_dir"] / "ranking_decile_performance.csv", index=False)
+    else:
+        pd.DataFrame().to_csv(paths["models_dir"] / "ranking_decile_performance.csv", index=False)
+    if topk_tables:
+        pd.concat(topk_tables, ignore_index=True).to_csv(paths["models_dir"] / "top_k_precision_summary.csv", index=False)
+    else:
+        pd.DataFrame().to_csv(paths["models_dir"] / "top_k_precision_summary.csv", index=False)
+
+    expected_profit_cols = [c for c in pred.columns if c.startswith("expected_incremental_profit_")]
+    profit = profit_threshold_analysis(
+        pred,
+        expected_profit_cols=expected_profit_cols,
+        y_col="actual_churn_flag",
+        p_col="p_churn_calibrated",
+        top_k_shares=top_k_shares,
+        min_profit=0.0,
+    )
+    profit.to_csv(paths["models_dir"] / "profit_threshold_analysis.csv", index=False)
+
+
+def _recommendation_risk_from_rule_group(group: Any, trivial: Any = None) -> str:
+    """Map MBA rule metadata to a conservative treatment-design risk label."""
+    if pd.notna(trivial):
+        try:
+            if bool(trivial):
+                return "high_trivial_or_discount_leakage_risk"
+        except Exception:
+            pass
+    if pd.isna(group):
+        return "unknown"
+    group_str = str(group).strip().upper()
+    if group_str.startswith("A"):
+        return "low"
+    if group_str.startswith("B"):
+        return "medium_manual_review"
+    if group_str.startswith("C"):
+        return "high_trivial_or_discount_leakage_risk"
+    return "unknown"
+
+
+def merge_recommendation_metadata(
+    pred: pd.DataFrame,
+    paths: Dict[str, Path],
+    id_col: str,
+    top_n: int = 3,
+) -> pd.DataFrame:
+    """Merge M3 MBA/RecSys outputs as treatment metadata, not model features."""
+    pred = pred.copy()
+    voucher_path = paths.get("voucher_recommendations_csv")
+    rules_path = paths.get("final_campaign_rules_csv")
+    audit: Dict[str, Any] = {
+        "voucher_file_exists": bool(voucher_path and voucher_path.exists()),
+        "mba_rules_file_exists": bool(rules_path and rules_path.exists()),
+        "m5_customer_rows": int(len(pred)),
+        "top_n_vouchers_requested": int(top_n),
+        "recommendation_role": "treatment_metadata_only_not_training_feature",
+    }
+
+    if not voucher_path or not voucher_path.exists():
+        pred["offer_available_flag"] = False
+        pred["recommendation_source"] = "none_voucher_file_missing"
+        pd.DataFrame([audit]).to_csv(paths["models_dir"] / "recommendation_merge_audit.csv", index=False)
+        return pred
+
+    vouchers = pd.read_csv(voucher_path)
+    audit["voucher_rows"] = int(len(vouchers))
+    if id_col not in vouchers.columns:
+        audit["merge_status"] = f"skipped_missing_{id_col}"
+        pred["offer_available_flag"] = False
+        pred["recommendation_source"] = "none_missing_household_key"
+        pd.DataFrame([audit]).to_csv(paths["models_dir"] / "recommendation_merge_audit.csv", index=False)
+        return pred
+
+    vouchers[id_col] = vouchers[id_col].astype(int)
+    rank_col = "voucher_recommendation_rank" if "voucher_recommendation_rank" in vouchers.columns else "recommendation_rank"
+    if rank_col not in vouchers.columns:
+        vouchers[rank_col] = vouchers.groupby(id_col).cumcount() + 1
+    vouchers[rank_col] = vouchers[rank_col].astype(int)
+    vouchers = vouchers.sort_values([id_col, rank_col]).groupby(id_col).head(top_n).copy()
+    audit["voucher_households"] = int(vouchers[id_col].nunique())
+
+    # Optional MBA rule metadata by recommended consequent. This is used only for
+    # treatment-design risk labelling, not for model training.
+    rule_lookup = pd.DataFrame()
+    if rules_path and rules_path.exists():
+        try:
+            rules = pd.read_csv(rules_path)
+            if "consequents_str" in rules.columns:
+                sort_cols = [c for c in ["business_score", "lift", "confidence", "basket_count"] if c in rules.columns]
+                if sort_cols:
+                    rules = rules.sort_values(sort_cols, ascending=False)
+                keep = [c for c in ["consequents_str", "rule_group", "trivial_flag", "business_score", "recommended_campaign_use"] if c in rules.columns]
+                rule_lookup = rules[keep].drop_duplicates("consequents_str").rename(columns={"consequents_str": "recommended_item"})
+        except Exception as exc:
+            audit["mba_rules_merge_error"] = str(exc)
+
+    if not rule_lookup.empty and "recommended_item" in vouchers.columns:
+        vouchers = vouchers.merge(rule_lookup, on="recommended_item", how="left")
+        vouchers["discount_leakage_risk"] = vouchers.apply(
+            lambda r: _recommendation_risk_from_rule_group(r.get("rule_group"), r.get("trivial_flag")), axis=1
+        )
+    else:
+        vouchers["rule_group"] = "unknown"
+        vouchers["discount_leakage_risk"] = "unknown"
+
+    value_cols = [
+        "recommended_item",
+        "recommended_item_group",
+        "predicted_purchase_score",
+        "strongest_purchased_anchor_item",
+        "strongest_purchased_anchor_group",
+        "anchor_item_similarity",
+        "score_method",
+        "rule_group",
+        "discount_leakage_risk",
+    ]
+    value_cols = [c for c in value_cols if c in vouchers.columns]
+    wide = vouchers[[id_col, rank_col, *value_cols]].copy()
+    pieces = []
+    for r in range(1, top_n + 1):
+        one = wide[wide[rank_col] == r].drop(columns=[rank_col]).copy()
+        rename = {c: f"{c}_{r}" for c in value_cols}
+        one = one.rename(columns=rename)
+        pieces.append(one)
+    if pieces:
+        rec_wide = pieces[0]
+        for piece in pieces[1:]:
+            rec_wide = rec_wide.merge(piece, on=id_col, how="outer")
+        pred = pred.merge(rec_wide, on=id_col, how="left")
+
+    pred["offer_available_flag"] = pred.get("recommended_item_1", pd.Series(index=pred.index, dtype=object)).notna()
+    pred["recommendation_source"] = np.where(pred["offer_available_flag"], "M3_RecSys_personalized_voucher", "none_no_household_offer")
+    if "discount_leakage_risk_1" in pred.columns:
+        pred["primary_offer_discount_leakage_risk"] = pred["discount_leakage_risk_1"].fillna("unknown")
+    else:
+        pred["primary_offer_discount_leakage_risk"] = "unknown"
+
+    high_risk = pred["risk_decile"] <= 3 if "risk_decile" in pred.columns else pd.Series(False, index=pred.index)
+    audit.update(
+        {
+            "merge_status": "completed",
+            "m5_customers_with_offer": int(pred["offer_available_flag"].sum()),
+            "m5_offer_coverage_share": float(pred["offer_available_flag"].mean()),
+            "high_risk_customers": int(high_risk.sum()),
+            "high_risk_customers_with_offer": int((high_risk & pred["offer_available_flag"]).sum()),
+            "high_risk_offer_coverage_share": float((high_risk & pred["offer_available_flag"]).sum() / max(high_risk.sum(), 1)),
+            "top_offer_low_risk_count": int((pred.get("primary_offer_discount_leakage_risk", "unknown") == "low").sum()) if "primary_offer_discount_leakage_risk" in pred.columns else 0,
+            "top_offer_medium_review_count": int((pred.get("primary_offer_discount_leakage_risk", "unknown") == "medium_manual_review").sum()) if "primary_offer_discount_leakage_risk" in pred.columns else 0,
+            "top_offer_high_risk_count": int((pred.get("primary_offer_discount_leakage_risk", "unknown") == "high_trivial_or_discount_leakage_risk").sum()) if "primary_offer_discount_leakage_risk" in pred.columns else 0,
+            "note": "Recommendations are merged after scoring as offer metadata. They are not used as churn-model training features.",
+        }
+    )
+    pd.DataFrame([audit]).to_csv(paths["models_dir"] / "recommendation_merge_audit.csv", index=False)
+    export_voucher_diversification_audit(pred, paths, top_n=top_n)
+    return pred
+
+
+def export_voucher_diversification_audit(pred: pd.DataFrame, paths: Dict[str, Path], top_n: int = 3) -> pd.DataFrame:
+    """Audit whether merged voucher metadata is usable and diversified for campaign design."""
+    rows: List[Dict[str, Any]] = []
+    subsets = {
+        "all_customers": pred.index,
+        "high_risk_top_30pct": pred.index[pred["risk_decile"] <= 3] if "risk_decile" in pred.columns else pred.index[:0],
+        "high_risk_high_value": pred.index[pred["priority_segment"].eq("High Risk - High Value")] if "priority_segment" in pred.columns else pred.index[:0],
+    }
+    item_cols = [f"recommended_item_{i}" for i in range(1, top_n + 1)]
+    group_cols = [f"recommended_item_group_{i}" for i in range(1, top_n + 1)]
+    risk_cols = [f"discount_leakage_risk_{i}" for i in range(1, top_n + 1)]
+    for subset_name, idx in subsets.items():
+        sub = pred.loc[idx].copy()
+        n = len(sub)
+        if n == 0:
+            rows.append({"subset": subset_name, "customer_count": 0, "note": "empty subset"})
+            continue
+        available_counts = sub[[c for c in item_cols if c in sub.columns]].notna().sum(axis=1) if any(c in sub.columns for c in item_cols) else pd.Series(0, index=sub.index)
+        distinct_item_counts = sub.apply(lambda r: len({r[c] for c in item_cols if c in sub.columns and pd.notna(r[c])}), axis=1)
+        distinct_group_counts = sub.apply(lambda r: len({r[c] for c in group_cols if c in sub.columns and pd.notna(r[c])}), axis=1) if any(c in sub.columns for c in group_cols) else pd.Series(np.nan, index=sub.index)
+        duplicate_item_flag = available_counts.gt(1) & distinct_item_counts.lt(available_counts)
+        duplicate_group_flag = available_counts.gt(1) & distinct_group_counts.lt(available_counts) if distinct_group_counts.notna().any() else pd.Series(False, index=sub.index)
+        low_risk_primary = sub.get("primary_offer_discount_leakage_risk", pd.Series("unknown", index=sub.index)).eq("low")
+        high_risk_any = pd.Series(False, index=sub.index)
+        for c in risk_cols:
+            if c in sub.columns:
+                high_risk_any = high_risk_any | sub[c].eq("high_trivial_or_discount_leakage_risk")
+        rows.append({
+            "subset": subset_name,
+            "customer_count": int(n),
+            "offer_available_count": int((available_counts > 0).sum()),
+            "offer_available_share": float((available_counts > 0).mean()),
+            "avg_offer_count": float(available_counts.mean()),
+            "full_top_n_offer_count": int((available_counts >= top_n).sum()),
+            "full_top_n_offer_share": float((available_counts >= top_n).mean()),
+            "avg_distinct_item_count": float(distinct_item_counts.mean()),
+            "avg_distinct_group_count": float(distinct_group_counts.mean()) if distinct_group_counts.notna().any() else np.nan,
+            "duplicate_item_customer_count": int(duplicate_item_flag.sum()),
+            "duplicate_item_customer_share": float(duplicate_item_flag.mean()),
+            "duplicate_group_customer_count": int(duplicate_group_flag.sum()),
+            "duplicate_group_customer_share": float(duplicate_group_flag.mean()),
+            "primary_low_discount_leakage_risk_count": int(low_risk_primary.sum()),
+            "primary_low_discount_leakage_risk_share": float(low_risk_primary.mean()),
+            "any_high_discount_leakage_risk_count": int(high_risk_any.sum()),
+            "any_high_discount_leakage_risk_share": float(high_risk_any.mean()),
+            "note": "Recommendations are treatment metadata only; diversification audit does not prove causal lift.",
+        })
+    audit = pd.DataFrame(rows)
+    audit.to_csv(paths["models_dir"] / "voucher_diversification_audit.csv", index=False)
+    return audit
+
+
+def score_customers(features: pd.DataFrame, value_labels: pd.DataFrame, churn_model: Any, churn_cols: List[str], churn_threshold: float, active_model: Any, value_model: Any, value_model_name: str, feature_cols: List[str], id_col: str, target_col: str, scenarios: Dict[str, Dict[str, float]], paths: Dict[str, Path], cut_off_day: int, discount_rate: float, active_model_name: str, champion_name: str, calibration_method: str, top_k_shares: Iterable[float], decile_count: int, recommendation_top_n: int) -> pd.DataFrame:
     X = features[feature_cols].copy()
     y = features[target_col].astype(int).copy()
     p_churn = churn_model.predict_proba(features[churn_cols])[:, 1]
@@ -588,6 +1125,7 @@ def score_customers(features: pd.DataFrame, value_labels: pd.DataFrame, churn_mo
     # Include observed labels for audit only, not as model inputs.
     label_cols = [id_col, "future_active_flag", "future_revenue_60d", "discounted_future_revenue_60d"]
     pred = pred.merge(value_labels[label_cols], on=id_col, how="left")
+    export_value_model_residual_diagnostics(pred, paths)
     pred = calculate_deciles_and_segments(pred)
     pred, _summary, _sens = apply_expected_profit(pred, make_scenario_grid(scenarios), paths, id_col)
     base_col = "expected_incremental_profit_base"
@@ -597,15 +1135,8 @@ def score_customers(features: pd.DataFrame, value_labels: pd.DataFrame, churn_mo
         pred[base_profitable_col], "Candidate for treatment / A-B test",
         np.where(pred["risk_decile"] <= 3, "High risk but not profitable under base assumptions", "Monitor / no paid treatment"),
     )
-    voucher_path = paths["voucher_recommendations_csv"]
-    if voucher_path.exists():
-        vouchers = pd.read_csv(voucher_path)
-        if id_col in vouchers.columns:
-            vouchers[id_col] = vouchers[id_col].astype(int)
-            sort_cols = [id_col] + (["voucher_recommendation_rank"] if "voucher_recommendation_rank" in vouchers.columns else [])
-            top_voucher = vouchers.sort_values(sort_cols).groupby(id_col, as_index=False).first()
-            keep_cols = [c for c in [id_col, "recommended_item", "recommended_item_group", "predicted_purchase_score", "strongest_purchased_anchor_item"] if c in top_voucher.columns]
-            pred = pred.merge(top_voucher[keep_cols], on=id_col, how="left")
+    export_ranking_and_profit_diagnostics(pred, paths, top_k_shares=top_k_shares, decile_count=decile_count)
+    pred = merge_recommendation_metadata(pred, paths, id_col=id_col, top_n=recommendation_top_n)
     pred = pred.sort_values("priority_rank").reset_index(drop=True)
     pred.to_csv(paths["models_dir"] / "churn_predictions.csv", index=False)
     pred[pred["risk_decile"] <= 3].sort_values([base_col, "p_churn_calibrated"], ascending=False).to_csv(paths["models_dir"] / "high_risk_customers_for_ab_test.csv", index=False)
@@ -613,7 +1144,7 @@ def score_customers(features: pd.DataFrame, value_labels: pd.DataFrame, churn_mo
     pred[pred[base_profitable_col]].sort_values([base_col, "p_churn_calibrated"], ascending=False).to_csv(paths["models_dir"] / "profitable_treatment_candidates_base.csv", index=False)
 
     package = {
-        "version_note": "v3_discounted_two_part_value_shap_seasonality",
+        "version_note": "v3_plus_diagnostics_discounted_value_shap_seasonality",
         "cut_off_day": cut_off_day,
         "feature_cols": feature_cols,
         "champion_churn_model_name": champion_name,
@@ -812,7 +1343,7 @@ def write_report_outline(metrics: pd.DataFrame, cal: pd.DataFrame, active_metric
     value = value_metrics.iloc[0]
     base_profitable = int(predictions.get("profitable_to_treat_base", pd.Series(dtype=bool)).sum())
     shap_top = shap_df.head(5)["feature"].tolist() if shap_df is not None and not shap_df.empty else []
-    md = f"""# M5 Modeling Report Outline — v3
+    md = f"""# M5 Modeling Report Outline — v3 + diagnostics
 
 ## Role
 M5 receives M4's delivered feature table and builds a risk/value/profit ranking for M6. M5 does not claim treatment causality; M6 validates causal lift through A/B testing.
@@ -829,6 +1360,7 @@ M5 receives M4's delivered feature table and builds a risk/value/profit ranking 
   3. `predicted_expected_discounted_value_60d = p_future_active × value_if_active`.
 - Expected incremental profit uses discounted value and scenario assumptions.
 - SHAP outputs are used for model explainability, but they are predictive explanations, not causal claims.
+- Additional diagnostics now cover multicollinearity/correlation, value-model residuals, feature-lineage scaffolding, voucher diversification, and repeated split stability.
 
 ## Churn model
 - Selected model: **{best['model']}**
@@ -854,6 +1386,13 @@ Under the base scenario, **{base_profitable}** customers have positive expected 
 ## SHAP top drivers
 {chr(10).join([f'- {x}' for x in shap_top]) if shap_top else '- SHAP was skipped or unavailable; use `models/feature_importance.csv` as fallback.'}
 
+## Additional diagnostic files
+- `models/multicollinearity_vif.csv` and `models/numeric_feature_correlation_pairs.csv`: check correlated/duplicated numeric signals before interpreting linear coefficients.
+- `models/value_model_residual_summary.csv` and `models/value_model_decile_diagnostics.csv`: check whether the value model under/over-predicts by predicted-value decile.
+- `models/feature_lineage_audit_template.csv` and `reports/internal_briefs/M4_M5_feature_lineage_audit.md`: scaffold for M4 to confirm upstream feature windows.
+- `models/voucher_diversification_audit.csv`: checks whether personalized offers are available and diversified enough for campaign design.
+- `models/split_stability_runs.csv` and `models/split_stability_summary.csv`: repeated split robustness check.
+
 ## Important limitations
 - M5 uses M4's current feature table as-is. A separate M4 feature lineage audit is still recommended.
 - Discounted 60-day value is not true lifetime CLV.
@@ -864,9 +1403,9 @@ Under the base scenario, **{base_profitable}** customers have positive expected 
 
 
 def update_model_readme(paths: Dict[str, Path], run_smote: bool) -> None:
-    readme = f"""# README — M5 Model Pipeline v3
+    readme = f"""# README — M5 Model Pipeline v3 + diagnostics
 
-This README explains the M5 pipeline for a beginner. M5 builds churn-risk, discounted value, and expected-profit rankings for the A/B testing step.
+This README explains the M5 pipeline for a beginner. M5 builds churn-risk, discounted value, expected-profit rankings, and diagnostic checks for the A/B testing step.
 
 ## 1. What M5 outputs
 
@@ -904,6 +1443,7 @@ Success metrics:
 | Recall | Share of actual churners caught |
 | Precision | Share of predicted churn-risk customers who actually churn |
 | Brier score | Probability quality/calibration |
+| Precision@Top K / Lift@Top K | Whether the highest-ranked customers are meaningfully better than random targeting |
 
 ### Probability calibration
 The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities, then selects the best validation Brier score. Business formulas use `p_churn_calibrated`, not raw weighted-model probability.
@@ -923,11 +1463,12 @@ The discount rate is configured in `config/paths.yaml`. A 60-day discounted valu
 p_churn_calibrated × save_rate_given_treatment × predicted_discounted_value_60d_if_active × gross_margin - treatment_cost
 ```
 
-This is scenario-based. The save rate, margin, and treatment cost are assumptions until M6 validates lift with A/B testing.
+This is scenario-based. The save rate, margin, and treatment cost are assumptions until M6 validates lift with A/B testing. The pipeline also exports profit-threshold and top-K diagnostics, because a retention campaign usually targets a prioritized subset rather than every predicted churner.
 
 ## 3. Data leakage and SMOTE rules
 
 - M5 assumes M4's delivered features are computed before `cut_off_day`.
+- `models/feature_lineage_audit_template.csv` is generated so M4 can confirm source table and time window for each feature.
 - M5 does not modify M4 features.
 - Validation and test sets are never resampled.
 - Optional SMOTETomek enabled in this run: `{run_smote}`.
@@ -957,7 +1498,20 @@ M5 adds a lightweight seasonality check:
 
 This does not fully model seasonality, but it documents whether the 60-day prediction window looks unusual.
 
-## 6. How files interact
+## 6. Additional model diagnostics
+
+| File | Why it matters |
+|---|---|
+| `models/multicollinearity_vif.csv` | Checks whether numeric features duplicate each other, important for Logistic/Ridge interpretation |
+| `models/numeric_feature_correlation_pairs.csv` | Lists numeric feature pairs with high correlation |
+| `models/value_model_residual_summary.csv` | Shows whether discounted-value predictions are biased overall |
+| `models/value_model_decile_diagnostics.csv` | Shows value-model error by predicted value decile |
+| `models/feature_lineage_audit_template.csv` | M4/M5 checklist for feature-window leakage review |
+| `models/voucher_diversification_audit.csv` | Checks whether RecSys offers are available/diversified for campaign design |
+| `models/split_stability_runs.csv` | Repeated split robustness check; do not cherry-pick the best seed |
+| `models/split_stability_summary.csv` | Mean/std/min/max of key metrics across repeated splits |
+
+## 7. How files interact
 
 ```text
 config/paths.yaml
@@ -969,7 +1523,7 @@ config/paths.yaml
   -> models/*.csv contains outputs for M5/M6
 ```
 
-## 7. How to run
+## 8. How to run
 
 ```bash
 pip install -r requirements.txt
@@ -977,7 +1531,7 @@ python -m py_compile scripts/*.py
 python scripts/modeling.py --config config/paths.yaml
 ```
 
-## 8. Main output files
+## 9. Main output files
 
 - `models/model_metrics.csv`
 - `models/calibration_summary.csv`
@@ -994,8 +1548,16 @@ python scripts/modeling.py --config config/paths.yaml
 - `models/seasonality_audit.csv`
 - `models/seasonality_window_comparison.csv`
 - `models/model.pkl`
+- `models/multicollinearity_vif.csv`
+- `models/numeric_feature_correlation_pairs.csv`
+- `models/value_model_residual_summary.csv`
+- `models/value_model_decile_diagnostics.csv`
+- `models/feature_lineage_audit_template.csv`
+- `models/voucher_diversification_audit.csv`
+- `models/split_stability_runs.csv`
+- `models/split_stability_summary.csv`
 
-## 9. What to say in the report
+## 10. What to say in the report
 
 Use wording like:
 
@@ -1009,6 +1571,86 @@ Avoid saying:
 """
     (paths["project_root"] / "README_M5_MODEL.md").write_text(readme, encoding="utf-8")
 
+
+
+
+def run_split_stability_diagnostics(
+    features: pd.DataFrame,
+    id_col: str,
+    target_col: str,
+    feature_cols: List[str],
+    num_cols: List[str],
+    cat_cols: List[str],
+    categorical_cols: List[str],
+    test_size: float,
+    validation_size: float,
+    seeds: Iterable[int],
+    f_beta: float,
+    paths: Dict[str, Path],
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Run lightweight repeated split diagnostics with Logistic Regression.
+
+    This is a robustness check only; it does not replace the main model. It helps
+    detect whether PR-AUC/F2/Brier are highly dependent on one random split.
+    """
+    rows: List[Dict[str, Any]] = []
+    for seed in seeds:
+        try:
+            split = prepare_splits(features, id_col, target_col, feature_cols, test_size, validation_size, int(seed))
+            linear_pre, _ = build_preprocessors(num_cols, cat_cols)
+            model = Pipeline([
+                ("preprocess", clone(linear_pre)),
+                ("model", LogisticRegression(class_weight="balanced", max_iter=1000, solver="lbfgs", random_state=int(seed))),
+            ])
+            model.fit(split["X_train"], split["y_train"])
+            candidates = calibrate_prefit_model(model, split["X_val"], split["y_val"], methods=("sigmoid", "isotonic"))
+            cal_rows: List[Dict[str, Any]] = []
+            for method, cal_model in candidates.items():
+                val_p = cal_model.predict_proba(split["X_val"])[:, 1]
+                test_p = cal_model.predict_proba(split["X_test"])[:, 1]
+                threshold, _ = best_fbeta_threshold(split["y_val"], val_p, beta=f_beta)
+                val_eval = evaluate_proba(split["y_val"], val_p, threshold, beta=f_beta)
+                test_eval = evaluate_proba(split["y_test"], test_p, threshold, beta=f_beta)
+                cal_rows.append({"method": method, "threshold": threshold, "val_brier": val_eval["brier_score"], "val_PR_AUC": val_eval["PR_AUC"], "test_eval": test_eval})
+            selected = sorted(cal_rows, key=lambda r: (r["val_brier"], -r["val_PR_AUC"]))[0]
+            test_eval = selected["test_eval"]
+            rows.append({
+                "seed": int(seed),
+                "model": "Logistic Regression balanced stability check",
+                "calibration_method": selected["method"],
+                "threshold": float(selected["threshold"]),
+                "test_PR_AUC": test_eval["PR_AUC"],
+                "test_F2_score": test_eval["F2_score"],
+                "test_precision": test_eval["precision"],
+                "test_recall": test_eval["recall"],
+                "test_brier_score": test_eval["brier_score"],
+                "test_mean_predicted_probability": test_eval["mean_predicted_probability"],
+                "test_actual_churn_rate": test_eval["actual_positive_rate"],
+                "test_calibration_gap": test_eval["calibration_gap_mean_minus_actual"],
+                "test_predicted_positive_rate": test_eval["predicted_positive_rate"],
+                "note": "Repeated split diagnostic; do not pick best seed for final reporting.",
+            })
+        except Exception as exc:
+            rows.append({"seed": int(seed), "model": "Logistic Regression balanced stability check", "error": str(exc)})
+    runs = pd.DataFrame(rows)
+    runs.to_csv(paths["models_dir"] / "split_stability_runs.csv", index=False)
+    metric_cols = [c for c in ["test_PR_AUC", "test_F2_score", "test_precision", "test_recall", "test_brier_score", "test_calibration_gap"] if c in runs.columns]
+    summary_rows: List[Dict[str, Any]] = []
+    for col in metric_cols:
+        vals = pd.to_numeric(runs[col], errors="coerce").dropna()
+        if vals.empty:
+            continue
+        summary_rows.append({
+            "metric": col,
+            "mean": float(vals.mean()),
+            "std": float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
+            "min": float(vals.min()),
+            "max": float(vals.max()),
+            "n_successful_runs": int(len(vals)),
+        })
+    summary = pd.DataFrame(summary_rows)
+    summary.to_csv(paths["models_dir"] / "split_stability_summary.csv", index=False)
+    return runs, summary
 
 def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
     project_root = find_project_root()
@@ -1037,6 +1679,11 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
     feature_cols = [c for c in features.columns if c not in [id_col, target_col]]
     cat_cols = [c for c in categorical_cols if c in feature_cols]
     num_cols = [c for c in feature_cols if c not in cat_cols]
+    create_feature_lineage_audit_scaffold(features, paths, id_col, target_col, cut_off_day, categorical_cols)
+    export_multicollinearity_and_correlation_audit(
+        features, feature_cols, categorical_cols, paths,
+        corr_threshold=float(config.get("diagnostics", {}).get("correlation_threshold", 0.85)),
+    )
     split = prepare_splits(features, id_col, target_col, feature_cols, test_size, validation_size, random_state)
     linear_pre, tree_pre = build_preprocessors(num_cols, cat_cols)
     scale_pos_weight = float((split["y_train"] == 0).sum() / max((split["y_train"] == 1).sum(), 1))
@@ -1053,8 +1700,18 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
     )
     predictions = score_customers(
         features, value_labels, churn_model, churn_cols, threshold, active_model, value_model, value_model_name, feature_cols, id_col, target_col,
-        config["expected_profit_scenarios"], paths, cut_off_day, annual_discount_rate, active_model_name, champion_name, calibration_method
+        config["expected_profit_scenarios"], paths, cut_off_day, annual_discount_rate, active_model_name, champion_name, calibration_method,
+        top_k_shares=config.get("evaluation", {}).get("top_k_shares", [0.05, 0.10, 0.20]),
+        decile_count=int(config.get("evaluation", {}).get("decile_count", 10)),
+        recommendation_top_n=int(config.get("recommendations", {}).get("top_n_vouchers", 3)),
     )
+
+    if bool(config.get("diagnostics", {}).get("run_split_stability", True)):
+        run_split_stability_diagnostics(
+            features, id_col, target_col, feature_cols, num_cols, cat_cols, categorical_cols,
+            test_size, validation_size, config.get("diagnostics", {}).get("split_stability_seeds", [7, 21, 42, 99, 123]),
+            f_beta, paths,
+        )
 
     create_seasonality_audit(paths, id_col, cut_off_day, prediction_horizon_days)
     shap_df = export_shap_outputs(churn_model, churn_cols, features, predictions, paths, shap_sample_size, shap_top_n) if run_shap else pd.DataFrame()
@@ -1065,7 +1722,7 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
 
     selected = cal_summary.iloc[0]
     summary = {
-        "version": "v3_discounted_two_part_value_shap_seasonality",
+        "version": "v3_plus_diagnostics_discounted_value_shap_seasonality",
         "project_root": str(project_root),
         "feature_rows": int(len(features)),
         "churn_rate": float(features[target_col].mean()),

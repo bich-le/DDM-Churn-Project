@@ -18,6 +18,7 @@ inputs:
   transaction_master_parquet: Data/Processed/transactions_master.parquet
   customer_base_parquet: Data/Processed/customer_base_labeled.parquet
   voucher_recommendations_csv: Data/Intermediate/market_basket/personalized_voucher_recommendations.csv
+  final_campaign_rules_csv: Data/Intermediate/market_basket/final_campaign_rules.csv
 
 modeling:
   id_col: household_key
@@ -67,3 +68,18 @@ explainability:
 
 seasonality_audit:
   run: true
+
+recommendations:
+  merge_recommendations: true
+  top_n_vouchers: 3
+
+evaluation:
+  top_k_shares:
+    - 0.05
+    - 0.10
+    - 0.20
+  decile_count: 10
+
+business_decision:
+  use_profit_based_threshold: true
+  min_expected_incremental_profit: 0.0

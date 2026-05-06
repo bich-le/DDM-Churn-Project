@@ -1,6 +1,6 @@
-# README — M5 Model Pipeline v3
+# README — M5 Model Pipeline v3 + diagnostics
 
-This README explains the M5 pipeline for a beginner. M5 builds churn-risk, discounted value, and expected-profit rankings for the A/B testing step.
+This README explains the M5 pipeline for a beginner. M5 builds churn-risk, discounted value, expected-profit rankings, and diagnostic checks for the A/B testing step.
 
 ## 1. What M5 outputs
 
@@ -38,6 +38,7 @@ Success metrics:
 | Recall | Share of actual churners caught |
 | Precision | Share of predicted churn-risk customers who actually churn |
 | Brier score | Probability quality/calibration |
+| Precision@Top K / Lift@Top K | Whether the highest-ranked customers are meaningfully better than random targeting |
 
 ### Probability calibration
 The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities, then selects the best validation Brier score. Business formulas use `p_churn_calibrated`, not raw weighted-model probability.
@@ -57,11 +58,12 @@ The discount rate is configured in `config/paths.yaml`. A 60-day discounted valu
 p_churn_calibrated × save_rate_given_treatment × predicted_discounted_value_60d_if_active × gross_margin - treatment_cost
 ```
 
-This is scenario-based. The save rate, margin, and treatment cost are assumptions until M6 validates lift with A/B testing.
+This is scenario-based. The save rate, margin, and treatment cost are assumptions until M6 validates lift with A/B testing. The pipeline also exports profit-threshold and top-K diagnostics, because a retention campaign usually targets a prioritized subset rather than every predicted churner.
 
 ## 3. Data leakage and SMOTE rules
 
 - M5 assumes M4's delivered features are computed before `cut_off_day`.
+- `models/feature_lineage_audit_template.csv` is generated so M4 can confirm source table and time window for each feature.
 - M5 does not modify M4 features.
 - Validation and test sets are never resampled.
 - Optional SMOTETomek enabled in this run: `False`.
@@ -91,7 +93,20 @@ M5 adds a lightweight seasonality check:
 
 This does not fully model seasonality, but it documents whether the 60-day prediction window looks unusual.
 
-## 6. How files interact
+## 6. Additional model diagnostics
+
+| File | Why it matters |
+|---|---|
+| `models/multicollinearity_vif.csv` | Checks whether numeric features duplicate each other, important for Logistic/Ridge interpretation |
+| `models/numeric_feature_correlation_pairs.csv` | Lists numeric feature pairs with high correlation |
+| `models/value_model_residual_summary.csv` | Shows whether discounted-value predictions are biased overall |
+| `models/value_model_decile_diagnostics.csv` | Shows value-model error by predicted value decile |
+| `models/feature_lineage_audit_template.csv` | M4/M5 checklist for feature-window leakage review |
+| `models/voucher_diversification_audit.csv` | Checks whether RecSys offers are available/diversified for campaign design |
+| `models/split_stability_runs.csv` | Repeated split robustness check; do not cherry-pick the best seed |
+| `models/split_stability_summary.csv` | Mean/std/min/max of key metrics across repeated splits |
+
+## 7. How files interact
 
 ```text
 config/paths.yaml
@@ -103,7 +118,7 @@ config/paths.yaml
   -> models/*.csv contains outputs for M5/M6
 ```
 
-## 7. How to run
+## 8. How to run
 
 ```bash
 pip install -r requirements.txt
@@ -111,7 +126,7 @@ python -m py_compile scripts/*.py
 python scripts/modeling.py --config config/paths.yaml
 ```
 
-## 8. Main output files
+## 9. Main output files
 
 - `models/model_metrics.csv`
 - `models/calibration_summary.csv`
@@ -128,8 +143,16 @@ python scripts/modeling.py --config config/paths.yaml
 - `models/seasonality_audit.csv`
 - `models/seasonality_window_comparison.csv`
 - `models/model.pkl`
+- `models/multicollinearity_vif.csv`
+- `models/numeric_feature_correlation_pairs.csv`
+- `models/value_model_residual_summary.csv`
+- `models/value_model_decile_diagnostics.csv`
+- `models/feature_lineage_audit_template.csv`
+- `models/voucher_diversification_audit.csv`
+- `models/split_stability_runs.csv`
+- `models/split_stability_summary.csv`
 
-## 9. What to say in the report
+## 10. What to say in the report
 
 Use wording like:
 

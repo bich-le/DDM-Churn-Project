@@ -34,3 +34,7 @@ reports/internal_briefs/M5_modeling_report_outline.md
 reports/internal_briefs/M5_shap_status.json
 reports/internal_briefs/M5_v2_change_log.md
 reports/internal_briefs/M5_v3_change_log.md
+README_M5_MODEL.md
+
+reports/internal_briefs/M4_M5_feature_lineage_audit.md
+reports/internal_briefs/m5_data_audit.csv
