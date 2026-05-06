@@ -1,0 +1,7 @@
+model,rank_test_score,mean_cv_PR_AUC,std_cv_PR_AUC,params
+Logistic Regression balanced,1,0.3021446904295389,0.006427693981143956,"{""model__C"": 0.03}"
+Logistic Regression balanced,2,0.29898570981078193,0.008008502162259956,"{""model__C"": 0.01}"
+Random Forest balanced,1,0.29501218318259215,0.013071263748715395,"{""model__max_depth"": null, ""model__max_features"": ""sqrt"", ""model__min_samples_leaf"": 5, ""model__n_estimators"": 80}"
+Random Forest balanced,2,0.27154855525448984,0.02667165425530868,"{""model__max_depth"": 3, ""model__max_features"": ""sqrt"", ""model__min_samples_leaf"": 5, ""model__n_estimators"": 80}"
+Extra Trees balanced,1,0.28211933942844647,0.012870641725577586,"{""model__max_depth"": null, ""model__max_features"": ""sqrt"", ""model__min_samples_leaf"": 5, ""model__n_estimators"": 80}"
+Extra Trees balanced,2,0.26404518406511873,0.01536269690483194,"{""model__max_depth"": 3, ""model__max_features"": ""sqrt"", ""model__min_samples_leaf"": 5, ""model__n_estimators"": 80}"

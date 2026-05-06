@@ -1,0 +1,85 @@
+project:
+  name: DDM-Churn-Project
+
+paths:
+  data_raw_dir: Data/Raw
+  data_processed_dir: Data/Processed
+  intermediate_features_dir: Data/Intermediate/features
+  intermediate_analysis_dir: Data/Intermediate/analysis
+  models_dir: models
+  notebooks_dir: notebooks
+  scripts_dir: scripts
+  visualization_exports_dir: visualization/exports
+  reports_internal_dir: reports/internal_briefs
+  reports_final_paper_dir: reports/final_paper
+
+inputs:
+  feature_table_csv: models/final_ML_features.csv
+  transaction_master_parquet: Data/Processed/transactions_master.parquet
+  customer_base_parquet: Data/Processed/customer_base_labeled.parquet
+  voucher_recommendations_csv: Data/Intermediate/market_basket/personalized_voucher_recommendations.csv
+  final_campaign_rules_csv: Data/Intermediate/market_basket/final_campaign_rules.csv
+
+modeling:
+  id_col: household_key
+  target_col: churn_flag
+  categorical_cols:
+    - Primary_Store_ID
+  cut_off_day: 651
+  test_size: 0.20
+  validation_size: 0.25
+  random_state: 42
+  f_beta: 2
+  n_estimators: 50
+  n_jobs: 1
+  cv_folds: 2
+  tuning_n_iter: 2
+  run_tree_value_models: false
+  run_xgboost: false
+  run_smote_baseline: false
+
+expected_profit_scenarios:
+  conservative:
+    gross_margin: 0.20
+    save_rate_given_treatment: 0.03
+    treatment_cost: 5.0
+  base:
+    gross_margin: 0.25
+    save_rate_given_treatment: 0.05
+    treatment_cost: 5.0
+  optimistic:
+    gross_margin: 0.30
+    save_rate_given_treatment: 0.08
+    treatment_cost: 5.0
+
+
+value_modeling:
+  prediction_horizon_days: 60
+  default_annual_discount_rate: 0.08
+  candidate_annual_discount_rates:
+    - 0.05
+    - 0.08
+    - 0.10
+
+explainability:
+  run_shap: true
+  shap_sample_size: 200
+  shap_top_n_customers: 20
+
+seasonality_audit:
+  run: true
+
+recommendations:
+  merge_recommendations: true
+  top_n_vouchers: 3
+
+evaluation:
+  top_k_shares:
+    - 0.05
+    - 0.10
+    - 0.20
+  decile_count: 10
+
+business_decision:
+  use_profit_based_threshold: true
+  min_expected_incremental_profit: 0.0

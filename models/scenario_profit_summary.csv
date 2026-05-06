@@ -1,0 +1,4 @@
+scenario,scenario_type,gross_margin,save_rate_given_treatment,treatment_cost,profitable_customer_count,profitable_customer_share,total_expected_incremental_profit_if_target_positive_only,top_30pct_risk_customer_count,total_expected_incremental_profit_if_target_top_30pct_risk
+conservative,named,0.2,0.03,5.0,0,0.0,0.0,750,-3619.6866111939617
+base,named,0.25,0.05,5.0,0,0.0,0.0,750,-3478.513773320753
+optimistic,named,0.3,0.08,5.0,3,0.0012004801920768306,2.393645298509276,750,-3228.7464447758466
