@@ -1,0 +1,2 @@
+value_model,target,val_RMSE_log,val_MAE_log,val_R2_log,val_MAE_revenue,test_RMSE_log,test_MAE_log,test_R2_log,test_MAE_revenue
+Ridge Regression,log1p(discounted_future_revenue_60d | active),0.9187652030896418,0.6866616804215179,0.4744177720840548,166.32047089797993,0.9571952177679451,0.713306839191524,0.41214474716749305,191.1297023632212

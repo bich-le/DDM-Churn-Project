@@ -1,0 +1,5 @@
+model,best_cv_PR_AUC,best_cv_PR_AUC_std,best_params
+Logistic Regression balanced,0.3021446904295389,0.006427693981143956,"{""model__C"": 0.03}"
+Extra Trees balanced,0.28420865947784996,0.014274758162590717,"{""model__max_depth"": null, ""model__max_features"": ""sqrt"", ""model__min_samples_leaf"": 5, ""model__n_estimators"": 60}"
+Random Forest balanced,0.297397716027181,0.01296772058705789,"{""model__max_depth"": null, ""model__max_features"": ""sqrt"", ""model__min_samples_leaf"": 5, ""model__n_estimators"": 60}"
+Dummy prior,,,{}
