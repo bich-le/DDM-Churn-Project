@@ -107,8 +107,8 @@ def build_rfm_and_behavior(obs_txns, CUT_OFF_DAY):
     return pd.merge(cust_feats, ipt_stats, on='household_key', how='left')
 
 def build_marketing_and_trend(obs_txns, causal_obs, product, CUT_OFF_DAY):
-    """Engineers Brand Affinity, Point-of-Sale Responsiveness, and Rolling Freq Trend."""
-    print("3. Engineering Brand Affinity, Causal, and Rolling Trend...")
+    """Engineers Brand Affinity, Point-of-Sale Responsiveness, Rolling Freq Trend, and Primary Store."""
+    print("3. Engineering Brand Affinity, Causal, Rolling Trend, and Primary Store...")
     
     # Brand Affinity (Laplace)
     if 'BRAND' not in obs_txns.columns:
@@ -154,10 +154,16 @@ def build_marketing_and_trend(obs_txns, causal_obs, product, CUT_OFF_DAY):
     
     trend_df['Rolling_Freq_Slope'] = trend_df.apply(calc_slope, axis=1)
 
-    return brand_qty[['household_key', 'Private_Brand_Ratio']], causal_features, trend_df[['household_key', 'Rolling_Freq_Slope']]
+    # Primary Store Affinity
+    primary_store = obs_txns.groupby('household_key')['STORE_ID'].agg(
+        lambda x: pd.Series.mode(x)[0] if not x.mode().empty else np.nan
+    ).reset_index(name='Primary_Store_ID')
+    primary_store['Primary_Store_ID'] = primary_store['Primary_Store_ID'].astype(str)
+
+    return brand_qty[['household_key', 'Private_Brand_Ratio']], causal_features, trend_df[['household_key', 'Rolling_Freq_Slope']], primary_store
 
 def build_campaign_and_demo(campaign_table, campaign_desc, demographics, obs_txns, CUT_OFF_DAY):
-    """Engineers Campaign Exposure, Fatigue, and Demographic Proxies."""
+    """Engineers Campaign Exposure, Fatigue, Categorization, and Demographic Proxies."""
     print("4. Engineering Campaign & Demographics...")
     
     # Combine Campaign Data
@@ -194,7 +200,7 @@ def build_campaign_and_demo(campaign_table, campaign_desc, demographics, obs_txn
     
     return campaign_features, demo_feature[['household_key', 'has_demographic_info']]
 
-def assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_df, camp_feats, demo_feat, CUT_OFF_DAY):
+def assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_df, primary_store, camp_feats, demo_feat, CUT_OFF_DAY):
     """Merges features, splits data, scales, applies SMOTE, and exports outputs."""
     print("5. Assembling Data, Scaling, and Applying SMOTETomek...")
     
@@ -203,11 +209,13 @@ def assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_d
     df_final = pd.merge(df_final, brand_feats, on='household_key', how='left')
     df_final = pd.merge(df_final, causal_feats, on='household_key', how='left')
     df_final = pd.merge(df_final, trend_df, on='household_key', how='left')
+    df_final = pd.merge(df_final, primary_store, on='household_key', how='left')
     df_final = pd.merge(df_final, camp_feats, on='household_key', how='left')
     df_final = pd.merge(df_final, demo_feat, on='household_key', how='left')
 
     # Final imputation
     df_final['Days_Since_Last_Camp'].fillna(CUT_OFF_DAY, inplace=True)
+    df_final['Primary_Store_ID'].fillna('Unknown', inplace=True)
     df_final.fillna(0, inplace=True)
 
     print(f"   -> Final DataFrame shape (Before SMOTE): {df_final.shape}")
@@ -215,11 +223,13 @@ def assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_d
 
     # ML Pipeline Splitting
     keys = df_final['household_key']
-    X = df_final.drop(columns=['household_key', 'churn_flag'])
+    stores = df_final['Primary_Store_ID']
+    # Drop categorical features and IDs before scaling
+    X = df_final.drop(columns=['household_key', 'churn_flag', 'Primary_Store_ID'])
     y = df_final['churn_flag']
     
-    X_train, X_test, y_train, y_test, keys_train, keys_test = train_test_split(
-        X, y, keys, test_size=0.2, random_state=42, stratify=y
+    X_train, X_test, y_train, y_test, keys_train, keys_test, stores_train, stores_test = train_test_split(
+        X, y, keys, stores, test_size=0.2, random_state=42, stratify=y
     )
 
     # Airtight Scaling
@@ -231,12 +241,30 @@ def assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_d
     smt = SMOTETomek(random_state=42)
     X_train_resampled, y_train_resampled = smt.fit_resample(X_train_scaled, y_train)
 
+    print("*" * 60)
+    print("NOTICE FOR MODELING TEAM (M5/M6):")
+    print("1. Train set has been processed with SMOTETomek.")
+    print("2. 'Primary_Store_ID' is categorical and re-attached to the files.")
+    print("   Apply Target Encoding using train set distributions if using Linear/NN models.")
+    print("*" * 60)
+
     # Pack DataFrames
     train_final_df = pd.concat([X_train_resampled, y_train_resampled.reset_index(drop=True)], axis=1)
     test_final_df = pd.concat([X_test_scaled, y_test.reset_index(drop=True)], axis=1)
     
-    # Restore ID for Test set
+    # Restore ID and Store ID for Test set
     test_final_df['household_key'] = keys_test.values
+    test_final_df['Primary_Store_ID'] = stores_test.values
+
+    # Restore ID and Store ID for Train set 
+    # (Synthetic rows generated by SMOTE will be given a placeholder tag)
+    train_store_info = pd.DataFrame({
+        'household_key': keys_train.values,
+        'Primary_Store_ID': stores_train.values
+    })
+    train_final_df = pd.concat([train_final_df, train_store_info], axis=1)
+    train_final_df['household_key'].fillna('Synthetic', inplace=True)
+    train_final_df['Primary_Store_ID'].fillna('Synthetic', inplace=True)
 
     # Export
     train_final_df.to_parquet(os.path.join(MODELS_DIR, 'final_train_features.parquet'), index=False)
@@ -248,10 +276,10 @@ def run_pipeline():
     obs_txns, causal_obs, demographics, product, campaign_table, campaign_desc, df_final, CUT_OFF_DAY = load_and_filter_data()
     
     cust_feats = build_rfm_and_behavior(obs_txns, CUT_OFF_DAY)
-    brand_feats, causal_feats, trend_df = build_marketing_and_trend(obs_txns, causal_obs, product, CUT_OFF_DAY)
+    brand_feats, causal_feats, trend_df, primary_store = build_marketing_and_trend(obs_txns, causal_obs, product, CUT_OFF_DAY)
     camp_feats, demo_feat = build_campaign_and_demo(campaign_table, campaign_desc, demographics, obs_txns, CUT_OFF_DAY)
     
-    assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_df, camp_feats, demo_feat, CUT_OFF_DAY)
+    assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_df, primary_store, camp_feats, demo_feat, CUT_OFF_DAY)
 
 if __name__ == "__main__":
     run_pipeline()
