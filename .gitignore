@@ -19,7 +19,6 @@ Data/Intermediate/**
 # ============================================================
 models/*.pkl
 models/*.joblib
-models/*.parquet
 
 # Customer-level or data-derived M5 outputs should be generated locally,
 # not committed to a public GitHub repo.

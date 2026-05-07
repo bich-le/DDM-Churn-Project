@@ -364,13 +364,16 @@ def build_classifier_specs(
                         ]
                     ),
                     {
-                        "model__n_estimators": [10, 20],
-                        "model__max_depth": [2, 3],
-                        "model__learning_rate": [0.03, 0.05],
-                        "model__subsample": [0.85],
-                        "model__colsample_bytree": [0.85],
-                        "model__reg_lambda": [5.0],
-                        "model__min_child_weight": [3],
+                        # Wider XGBoost search space. Earlier lightweight runs only
+                        # tried 10/20 trees, which under-used the model and made the
+                        # benchmark unfair against tree ensembles.
+                        "model__n_estimators": [50, 100, 200, 300],
+                        "model__max_depth": [2, 3, 4],
+                        "model__learning_rate": [0.01, 0.03, 0.05, 0.10],
+                        "model__subsample": [0.75, 0.85, 1.0],
+                        "model__colsample_bytree": [0.75, 0.85, 1.0],
+                        "model__reg_lambda": [1.0, 3.0, 5.0, 10.0],
+                        "model__min_child_weight": [1, 3, 5],
                     },
                     feature_cols,
                 )
@@ -612,15 +615,41 @@ def select_calibrated_churn_model(
         ).items():
             row[f"test_{key}"] = value
         rows.append(row)
-    cal_summary = (
-        pd.DataFrame(rows)
-        .sort_values(["val_brier_score", "val_PR_AUC"], ascending=[True, False])
-        .reset_index(drop=True)
+    cal_summary = pd.DataFrame(rows)
+
+    # Calibration is not selected by Brier score alone. Isotonic calibration can
+    # improve Brier while creating large flat probability plateaus that damage
+    # score separability and PR-AUC. For churn prioritization, keep methods whose
+    # validation Brier score is close to the best method, then choose the one with
+    # the strongest validation PR-AUC. This normally favors sigmoid over isotonic
+    # when isotonic over-flattens the ranking while still excluding uncalibrated
+    # probabilities if their Brier score is much worse.
+    best_brier = float(cal_summary["val_brier_score"].min())
+    brier_tolerance = 0.015
+    cal_summary["val_brier_gap_from_best"] = cal_summary["val_brier_score"] - best_brier
+    cal_summary["calibration_selection_eligible"] = (
+        cal_summary["val_brier_gap_from_best"] <= brier_tolerance
     )
-    selected = cal_summary.iloc[0]
+    eligible_cal = cal_summary[cal_summary["calibration_selection_eligible"]].copy()
+    if eligible_cal.empty:
+        eligible_cal = cal_summary.copy()
+    selected = eligible_cal.sort_values(
+        ["val_PR_AUC", "val_brier_score"], ascending=[False, True]
+    ).iloc[0]
     selected_method = str(selected["calibration_method"])
     selected_model = candidates[selected_method]
     threshold = float(selected["val_threshold"])
+    cal_summary["selected_for_champion"] = cal_summary["calibration_method"].eq(
+        selected_method
+    )
+    cal_summary["selection_rule"] = (
+        "choose highest validation PR-AUC among calibration methods within "
+        f"{brier_tolerance:.3f} validation Brier of the best-Brier method"
+    )
+    cal_summary = cal_summary.sort_values(
+        ["selected_for_champion", "val_PR_AUC", "val_brier_score"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
     cal_summary.to_csv(output_dir / "calibration_summary.csv", index=False)
     cal_summary[cal_summary["calibration_method"] == selected_method].to_csv(
         output_dir / "champion_test_metrics.csv", index=False
@@ -1897,7 +1926,7 @@ M5 receives M4's delivered feature table and builds a risk/value/profit ranking 
   3. `predicted_expected_discounted_value_60d = p_future_active × value_if_active`.
 - Expected incremental profit uses discounted value and scenario assumptions.
 - Model selection prioritizes calibrated probability quality for business formulas, not only raw ranking performance.
-- XGBoost is disabled by default for runtime/reproducibility; it can be enabled in `config/paths.yaml` for additional benchmarking.
+- XGBoost benchmarking is enabled in the full-quality configuration; it should be compared under the same calibration and validation protocol as the other candidates.
 - SHAP outputs are used for model explainability, but they are predictive explanations, not causal claims.
 
 ## Churn model
@@ -1971,7 +2000,7 @@ The pipeline benchmarks:
 - Optional XGBoost weighted model if `modeling.run_xgboost: true`
 - Optional SMOTETomek baseline if `modeling.run_smote_baseline: true`
 
-Current config uses `cv_folds: 5` and `tuning_n_iter: 10` for the Logistic Regression parameter search. Tree models can be enabled as lightweight comparison baselines with `modeling.run_tree_baselines: true`; the default GitHub-friendly run keeps them disabled for runtime reproducibility. This is still not exhaustive optimization. XGBoost is disabled by default for reproducibility/runtime, not because it is invalid. Enable `modeling.run_xgboost: true` to benchmark it under the same pipeline.
+Current config uses `cv_folds: 5` and `tuning_n_iter: 10` for randomized hyperparameter search. Tree baselines and XGBoost are enabled in the full-quality configuration. The search is still not exhaustive, but the XGBoost search space now includes substantially larger `n_estimators` values instead of the earlier lightweight 10/20-tree grid.
 
 Success metrics:
 
@@ -1984,7 +2013,7 @@ Success metrics:
 | Brier score | Probability quality/calibration |
 
 ### Probability calibration
-The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities, then selects the best validation Brier score. Business formulas use `p_churn_calibrated`, not raw weighted-model probability. Isotonic calibration may create stepwise/flat probability groups; this is acceptable for calibration quality but should not be overinterpreted as a perfectly continuous risk score.
+The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities. Calibration selection is multi-objective: it first keeps methods whose validation Brier score is close to the best-Brier method, then chooses the highest validation PR-AUC among those methods. This avoids selecting an isotonic model that has slightly better Brier score but destroys ranking resolution through large flat probability plateaus. Business formulas use `p_churn_calibrated`, not raw weighted-model probability.
 
 ### Two-part discounted value model
 M5 no longer treats value as a single simple CLV model. It uses:
