@@ -1,113 +1,47 @@
 # ============================================================
 # DATA FILES
 # ============================================================
-
-# Do not commit raw, processed, or intermediate data.
-# Data should be downloaded/prepared locally following Data/README.md.
-Data/Raw/
-Data/Processed/
-Data/Intermediate/
-
-# Keep empty folder structure if needed
-!Data/.gitkeep
+# Do not commit Dunnhumby raw/processed/intermediate data.
+# Keep only README/.gitkeep placeholders if needed.
+Data/Raw/**
+Data/Processed/**
+Data/Intermediate/**
 !Data/Raw/.gitkeep
 !Data/Processed/.gitkeep
 !Data/Intermediate/.gitkeep
 !Data/Intermediate/features/.gitkeep
 !Data/Intermediate/analysis/.gitkeep
 !Data/Intermediate/market_basket/.gitkeep
-
-
-# ============================================================
-# PYTHON CACHE / BUILD ARTIFACTS
-# ============================================================
-
-__pycache__/
-*.py[cod]
-*$py.class
-*.pyo
-*.pyd
-
-.ipynb_checkpoints/
-.jupyter_runtime/
-
+!Data/README.md
 
 # ============================================================
-# VIRTUAL ENVIRONMENTS
+# MODEL / LARGE GENERATED ARTIFACTS
 # ============================================================
-
-.venv/
-venv/
-env/
-.virtualenvs/
-
-
-# ============================================================
-# OS / IDE / LOCAL FILES
-# ============================================================
-
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.log
-
-
-# ============================================================
-# ACCIDENTAL LOCAL PACKAGE SHADOWING
-# ============================================================
-
-# The real package is installed from imbalanced-learn.
-# Do not commit a local folder named imblearn.
-imblearn/
-
-
-# ============================================================
-# MODEL BINARY / HEAVY ARTIFACTS
-# ============================================================
-
 models/*.pkl
 models/*.joblib
 models/*.parquet
 
-
-# ============================================================
-# CUSTOMER-LEVEL / DATA-DERIVED M5 OUTPUTS
-# ============================================================
-
-# These files contain household-level predictions, features, labels,
-# or post-cutoff value information. Generate them locally instead of
-# pushing them to GitHub.
-
+# Customer-level or data-derived M5 outputs should be generated locally,
+# not committed to a public GitHub repo.
+models/final_ML_features.csv
 models/churn_predictions.csv
 models/priority_customers_all.csv
 models/high_risk_customers_for_ab_test.csv
 models/discounted_value_labels.csv
-models/final_ML_features.csv
+models/clv_training_labels.csv
+models/shap_top_risk_customer_reasons.csv
 models/break_even_analysis.csv
 models/scenario_sensitivity_grid.csv
-models/shap_top_risk_customer_reasons.csv
-
-
-# ============================================================
-# LEGACY / DUPLICATE M5 ARTIFACTS
-# ============================================================
-
-models/clv_model_metrics.csv
-models/clv_training_labels.csv
 models/profitable_treatment_candidates_base.csv
-
 
 # ============================================================
 # GENERATED M5 INTERNAL DIAGNOSTICS / AUDITS
 # ============================================================
-
 reports/internal_briefs/m5_pipeline_summary.json
 reports/internal_briefs/repo_input_validation.json
 reports/internal_briefs/M5_shap_status.json
 reports/internal_briefs/M5_v2_change_log.md
 reports/internal_briefs/M5_v3_change_log.md
-
 reports/internal_briefs/m5_data_audit.csv
 reports/internal_briefs/feature_lineage_audit_template.csv
 reports/internal_briefs/multicollinearity_vif.csv
@@ -120,3 +54,37 @@ reports/internal_briefs/split_stability_runs.csv
 reports/internal_briefs/split_stability_summary.csv
 reports/internal_briefs/seasonality_audit.csv
 reports/internal_briefs/seasonality_window_comparison.csv
+
+# ============================================================
+# PYTHON CACHE / BUILD ARTIFACTS
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.jupyter_runtime/
+
+# ============================================================
+# VIRTUAL ENVIRONMENTS
+# ============================================================
+.venv/
+venv/
+env/
+.virtualenvs/
+
+# ============================================================
+# OS / IDE / LOCAL FILES
+# ============================================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# ============================================================
+# ACCIDENTAL LOCAL PACKAGE SHADOWING
+# ============================================================
+# The real package should come from imbalanced-learn in requirements.txt.
+imblearn/
