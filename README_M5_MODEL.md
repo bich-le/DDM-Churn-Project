@@ -1,6 +1,6 @@
-# README — M5 Model Pipeline v3 + diagnostics
+# README — M5 Model Pipeline v3
 
-This README explains the M5 pipeline for a beginner. M5 builds churn-risk, discounted value, expected-profit rankings, and diagnostic checks for the A/B testing step.
+This README explains the M5 pipeline for a beginner. M5 builds churn-risk, discounted value, and expected-profit rankings for the A/B testing step.
 
 ## 1. What M5 outputs
 
@@ -11,8 +11,8 @@ For each household, M5 outputs:
 | `p_churn_calibrated` | Calibrated churn-risk probability under the project churn definition |
 | `p_future_active` | Probability that the household will generate revenue in the 60-day prediction window |
 | `predicted_discounted_value_60d_if_active` | Discounted 60-day revenue if the household is active |
-| `predicted_expected_discounted_value_60d` | Two-part expected value = `p_future_active × value_if_active` |
-| `expected_incremental_profit_*` | Scenario-based incremental profit from targeting |
+| `predicted_expected_discounted_value_60d` | Two-part unconditional expected value = `p_future_active × value_if_active`; useful as a value diagnostic, not the direct profit input |
+| `expected_incremental_profit_*` | Scenario-based incremental profit from targeting, calculated with `value_if_active` to avoid double-counting activity probability |
 | `priority_segment` | Risk/value segment for business interpretation |
 
 M5 does **not** prove that a voucher works. M6 must validate causal treatment lift with A/B testing.
@@ -29,6 +29,8 @@ The pipeline benchmarks:
 - Optional XGBoost weighted model if `modeling.run_xgboost: true`
 - Optional SMOTETomek baseline if `modeling.run_smote_baseline: true`
 
+Current config uses `cv_folds: 5` and `tuning_n_iter: 10` for the Logistic Regression parameter search. Tree models can be enabled as lightweight comparison baselines with `modeling.run_tree_baselines: true`; the default GitHub-friendly run keeps them disabled for runtime reproducibility. This is still not exhaustive optimization. XGBoost is disabled by default for reproducibility/runtime, not because it is invalid. Enable `modeling.run_xgboost: true` to benchmark it under the same pipeline.
+
 Success metrics:
 
 | Metric | Meaning |
@@ -38,10 +40,9 @@ Success metrics:
 | Recall | Share of actual churners caught |
 | Precision | Share of predicted churn-risk customers who actually churn |
 | Brier score | Probability quality/calibration |
-| Precision@Top K / Lift@Top K | Whether the highest-ranked customers are meaningfully better than random targeting |
 
 ### Probability calibration
-The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities, then selects the best validation Brier score. Business formulas use `p_churn_calibrated`, not raw weighted-model probability.
+The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities, then selects the best validation Brier score. Business formulas use `p_churn_calibrated`, not raw weighted-model probability. Isotonic calibration may create stepwise/flat probability groups; this is acceptable for calibration quality but should not be overinterpreted as a perfectly continuous risk score.
 
 ### Two-part discounted value model
 M5 no longer treats value as a single simple CLV model. It uses:
@@ -58,12 +59,11 @@ The discount rate is configured in `config/paths.yaml`. A 60-day discounted valu
 p_churn_calibrated × save_rate_given_treatment × predicted_discounted_value_60d_if_active × gross_margin - treatment_cost
 ```
 
-This is scenario-based. The save rate, margin, and treatment cost are assumptions until M6 validates lift with A/B testing. The pipeline also exports profit-threshold and top-K diagnostics, because a retention campaign usually targets a prioritized subset rather than every predicted churner.
+This is scenario-based. The save rate, margin, and treatment cost are assumptions until M6 validates lift with A/B testing. The formula uses `predicted_discounted_value_60d_if_active`, not unconditional expected value, to avoid multiplying by both `p_churn` and `p_future_active`. If no customers have positive expected profit under the base scenario, M5 uses churn-risk ranking for A/B test candidate selection rather than profit ranking for auto-targeting. A base scenario with zero profitable customers is a business-economics finding: it suggests that treatment cost, save rate, margin, or expected value assumptions must improve before rollout.
 
 ## 3. Data leakage and SMOTE rules
 
 - M5 assumes M4's delivered features are computed before `cut_off_day`.
-- `models/feature_lineage_audit_template.csv` is generated so M4 can confirm source table and time window for each feature.
 - M5 does not modify M4 features.
 - Validation and test sets are never resampled.
 - Optional SMOTETomek enabled in this run: `False`.
@@ -93,20 +93,7 @@ M5 adds a lightweight seasonality check:
 
 This does not fully model seasonality, but it documents whether the 60-day prediction window looks unusual.
 
-## 6. Additional model diagnostics
-
-| File | Why it matters |
-|---|---|
-| `models/multicollinearity_vif.csv` | Checks whether numeric features duplicate each other, important for Logistic/Ridge interpretation |
-| `models/numeric_feature_correlation_pairs.csv` | Lists numeric feature pairs with high correlation |
-| `models/value_model_residual_summary.csv` | Shows whether discounted-value predictions are biased overall |
-| `models/value_model_decile_diagnostics.csv` | Shows value-model error by predicted value decile |
-| `models/feature_lineage_audit_template.csv` | M4/M5 checklist for feature-window leakage review |
-| `models/voucher_diversification_audit.csv` | Checks whether RecSys offers are available/diversified for campaign design |
-| `models/split_stability_runs.csv` | Repeated split robustness check; do not cherry-pick the best seed |
-| `models/split_stability_summary.csv` | Mean/std/min/max of key metrics across repeated splits |
-
-## 7. How files interact
+## 6. How files interact
 
 ```text
 config/paths.yaml
@@ -117,6 +104,10 @@ config/paths.yaml
   -> Data/Processed/transactions_master.parquet builds discounted value labels and seasonality audit
   -> models/*.csv contains outputs for M5/M6
 ```
+
+## 7. GitHub/data governance note
+
+Raw/processed/intermediate Dunnhumby data and customer-level generated outputs are not intended to be pushed to a public GitHub repository. See `Data/README.md` for local data placement. The repository should track code, configuration, lightweight metric summaries, and documentation; customer-level predictions and heavy artifacts should be regenerated locally.
 
 ## 8. How to run
 
@@ -138,19 +129,12 @@ python scripts/modeling.py --config config/paths.yaml
 - `models/scenario_profit_summary.csv`
 - `models/scenario_sensitivity_grid.csv`
 - `models/break_even_analysis.csv`
+- `models/active_churn_target_overlap_audit.csv`
 - `models/shap_global_importance.csv`
 - `models/shap_top_risk_customer_reasons.csv`
 - `models/seasonality_audit.csv`
 - `models/seasonality_window_comparison.csv`
 - `models/model.pkl`
-- `models/multicollinearity_vif.csv`
-- `models/numeric_feature_correlation_pairs.csv`
-- `models/value_model_residual_summary.csv`
-- `models/value_model_decile_diagnostics.csv`
-- `models/feature_lineage_audit_template.csv`
-- `models/voucher_diversification_audit.csv`
-- `models/split_stability_runs.csv`
-- `models/split_stability_summary.csv`
 
 ## 10. What to say in the report
 
