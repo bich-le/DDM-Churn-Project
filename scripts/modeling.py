@@ -584,6 +584,163 @@ def calibrate_prefit_model(
     return out
 
 
+def calibration_flatspot_diagnostics(
+    y_true: Iterable[int],
+    proba: Iterable[float],
+    n_deciles: int = 10,
+    probability_round_decimals: int = 6,
+    large_bucket_warning_threshold: float = 0.20,
+) -> Dict[str, Any]:
+    """Diagnose probability flat spots and decile-ordering weaknesses.
+
+    Brier score alone can favor a calibration method that collapses many
+    customers into the same calibrated probability. That can be acceptable for
+    group-level calibration but harmful for ranking/top-k targeting. This
+    diagnostic is therefore used both for reporting and as a guardrail in the
+    calibration-selection logic.
+    """
+    y = np.asarray(y_true).astype(int)
+    p = np.asarray(proba).astype(float)
+    out: Dict[str, Any] = {
+        "n_customers": int(len(p)),
+        "number_of_unique_calibrated_probabilities": 0,
+        "unique_probability_share": np.nan,
+        "largest_probability_bucket_count": 0,
+        "share_of_customers_in_largest_probability_bucket": np.nan,
+        "largest_probability_bucket_value": np.nan,
+        "flatspot_warning": False,
+        "top_decile_actual_churn_rate": np.nan,
+        "bottom_decile_actual_churn_rate": np.nan,
+        "top_decile_mean_predicted_probability": np.nan,
+        "bottom_decile_mean_predicted_probability": np.nan,
+        "actual_churn_monotonicity_violation_count": 0,
+        "lower_decile_actual_churn_exceeds_top_decile": False,
+        "predicted_top_decile_below_bottom_decile": False,
+        "monotonicity_warning_by_decile": "not_evaluated",
+    }
+    if len(p) == 0:
+        return out
+
+    rounded_p = np.round(p, probability_round_decimals)
+    value_counts = pd.Series(rounded_p).value_counts(dropna=False)
+    unique_count = int(value_counts.shape[0])
+    largest_bucket_count = int(value_counts.iloc[0])
+    largest_bucket_share = float(largest_bucket_count / len(p))
+
+    out.update(
+        {
+            "number_of_unique_calibrated_probabilities": unique_count,
+            "unique_probability_share": float(unique_count / len(p)),
+            "largest_probability_bucket_count": largest_bucket_count,
+            "share_of_customers_in_largest_probability_bucket": largest_bucket_share,
+            "largest_probability_bucket_value": float(value_counts.index[0]),
+            "flatspot_warning": bool(
+                largest_bucket_share >= large_bucket_warning_threshold
+            ),
+        }
+    )
+
+    dec = calibration_by_decile(y, p, n_bins=n_deciles).sort_values(
+        "probability_decile"
+    )
+    if dec.empty:
+        return out
+
+    top_decile = dec[dec["probability_decile"] == 1]
+    bottom_decile = dec[dec["probability_decile"] == n_deciles]
+    top_actual = (
+        float(top_decile["actual_churn_rate"].iloc[0])
+        if not top_decile.empty
+        else np.nan
+    )
+    bottom_actual = (
+        float(bottom_decile["actual_churn_rate"].iloc[0])
+        if not bottom_decile.empty
+        else np.nan
+    )
+    top_pred = (
+        float(top_decile["mean_predicted_probability"].iloc[0])
+        if not top_decile.empty
+        else np.nan
+    )
+    bottom_pred = (
+        float(bottom_decile["mean_predicted_probability"].iloc[0])
+        if not bottom_decile.empty
+        else np.nan
+    )
+
+    # Decile 1 is highest predicted risk. Actual churn rates should generally
+    # decline as decile number increases. With small validation/test samples,
+    # violations are diagnostic warnings rather than automatic proof of failure.
+    actual_rates = dec["actual_churn_rate"].to_numpy(dtype=float)
+    increases_vs_previous = np.diff(actual_rates) > 0
+    violation_count = int(np.sum(increases_vs_previous))
+    lower_decile_exceeds_top = (
+        bool(np.nanmax(actual_rates[1:]) > top_actual)
+        if len(actual_rates) > 1 and not np.isnan(top_actual)
+        else False
+    )
+    predicted_rank_inversion = (
+        bool(top_pred < bottom_pred)
+        if not (np.isnan(top_pred) or np.isnan(bottom_pred))
+        else False
+    )
+
+    warnings: List[str] = []
+    if predicted_rank_inversion:
+        warnings.append("predicted_top_decile_below_bottom_decile")
+    if lower_decile_exceeds_top:
+        warnings.append("lower_decile_actual_churn_exceeds_top_decile")
+    if violation_count > 0:
+        warnings.append(
+            f"actual_churn_not_monotone_{violation_count}_adjacent_increases"
+        )
+    if largest_bucket_share >= large_bucket_warning_threshold:
+        warnings.append("large_probability_flat_spot")
+
+    out.update(
+        {
+            "top_decile_actual_churn_rate": top_actual,
+            "bottom_decile_actual_churn_rate": bottom_actual,
+            "top_decile_mean_predicted_probability": top_pred,
+            "bottom_decile_mean_predicted_probability": bottom_pred,
+            "actual_churn_monotonicity_violation_count": violation_count,
+            "lower_decile_actual_churn_exceeds_top_decile": lower_decile_exceeds_top,
+            "predicted_top_decile_below_bottom_decile": predicted_rank_inversion,
+            "monotonicity_warning_by_decile": "; ".join(warnings)
+            if warnings
+            else "none",
+        }
+    )
+    return out
+
+
+def calibration_guardrail_pass(
+    diag: Dict[str, Any],
+    baseline_churn_rate: float,
+    max_largest_bucket_share: float = 0.30,
+) -> Tuple[bool, str]:
+    """Return whether a calibration candidate is safe enough for champion selection.
+
+    The guardrail intentionally remains conservative: it does not require perfect
+    decile monotonicity because validation has few positives. It blocks candidates
+    that are clearly too flat for ranking or whose top predicted-risk decile is
+    not better than the base churn rate.
+    """
+    reasons: List[str] = []
+    largest_share = diag.get("share_of_customers_in_largest_probability_bucket", np.nan)
+    top_actual = diag.get("top_decile_actual_churn_rate", np.nan)
+
+    if not np.isnan(largest_share) and float(largest_share) > max_largest_bucket_share:
+        reasons.append(
+            f"largest_probability_bucket_share>{max_largest_bucket_share:.2f}"
+        )
+    if not np.isnan(top_actual) and float(top_actual) < float(baseline_churn_rate):
+        reasons.append("top_decile_actual_churn_below_baseline")
+
+    return len(reasons) == 0, "; ".join(reasons) if reasons else "pass"
+
+
 def select_calibrated_churn_model(
     metrics: pd.DataFrame,
     fitted_models: Dict[str, Tuple[Any, List[str]]],
@@ -597,7 +754,10 @@ def select_calibrated_churn_model(
     candidates = calibrate_prefit_model(
         base_model, split["X_val"][cols], split["y_val"]
     )
+    baseline_churn_rate = float(np.mean(split["y_val"]))
+
     rows: List[Dict[str, Any]] = []
+    flatspot_rows: List[Dict[str, Any]] = []
     for method, model in candidates.items():
         val_p = model.predict_proba(split["X_val"][cols])[:, 1]
         test_p = model.predict_proba(split["X_test"][cols])[:, 1]
@@ -614,25 +774,74 @@ def select_calibrated_churn_model(
             split["y_test"], test_p, threshold, beta=f_beta
         ).items():
             row[f"test_{key}"] = value
+
+        val_diag = calibration_flatspot_diagnostics(split["y_val"], val_p)
+        pass_guardrail, guardrail_reason = calibration_guardrail_pass(
+            val_diag, baseline_churn_rate=baseline_churn_rate
+        )
+        row.update(
+            {
+                "val_number_of_unique_calibrated_probabilities": val_diag.get(
+                    "number_of_unique_calibrated_probabilities"
+                ),
+                "val_share_of_customers_in_largest_probability_bucket": val_diag.get(
+                    "share_of_customers_in_largest_probability_bucket"
+                ),
+                "val_top_decile_actual_churn_rate": val_diag.get(
+                    "top_decile_actual_churn_rate"
+                ),
+                "val_monotonicity_warning_by_decile": val_diag.get(
+                    "monotonicity_warning_by_decile"
+                ),
+                "calibration_guardrail_pass": bool(pass_guardrail),
+                "calibration_guardrail_reason": guardrail_reason,
+            }
+        )
         rows.append(row)
+
+        for dataset_name, prob, y_part in [
+            ("validation", val_p, split["y_val"]),
+            ("test", test_p, split["y_test"]),
+        ]:
+            diag = calibration_flatspot_diagnostics(y_part, prob)
+            diag.update(
+                {
+                    "champion_model": champion_name,
+                    "calibration_method": method,
+                    "dataset": dataset_name,
+                    "selected_for_champion": False,  # updated below after selection
+                }
+            )
+            flatspot_rows.append(diag)
+
     cal_summary = pd.DataFrame(rows)
 
-    # Calibration is not selected by Brier score alone. Isotonic calibration can
-    # improve Brier while creating large flat probability plateaus that damage
-    # score separability and PR-AUC. For churn prioritization, keep methods whose
-    # validation Brier score is close to the best method, then choose the one with
-    # the strongest validation PR-AUC. This normally favors sigmoid over isotonic
-    # when isotonic over-flattens the ranking while still excluding uncalibrated
-    # probabilities if their Brier score is much worse.
+    # Calibration is selected with a multi-objective rule. Brier score must be
+    # close enough to the best-Brier method, but the method must also pass simple
+    # ranking-resolution guardrails. This prevents selecting an isotonic model
+    # that looks calibrated by Brier but collapses many customers into the same
+    # probability bucket or fails to concentrate churn in the top-risk decile.
     best_brier = float(cal_summary["val_brier_score"].min())
     brier_tolerance = 0.015
     cal_summary["val_brier_gap_from_best"] = cal_summary["val_brier_score"] - best_brier
-    cal_summary["calibration_selection_eligible"] = (
+    cal_summary["brier_within_tolerance"] = (
         cal_summary["val_brier_gap_from_best"] <= brier_tolerance
     )
+    cal_summary["calibration_selection_eligible"] = (
+        cal_summary["brier_within_tolerance"]
+        & cal_summary["calibration_guardrail_pass"]
+    )
     eligible_cal = cal_summary[cal_summary["calibration_selection_eligible"]].copy()
+    fallback_used = False
     if eligible_cal.empty:
-        eligible_cal = cal_summary.copy()
+        # If every calibrated candidate fails the guardrail, fall back to the
+        # Brier-tolerant set rather than silently picking a method outside the
+        # calibration-quality range. The failure is documented in the output.
+        eligible_cal = cal_summary[cal_summary["brier_within_tolerance"]].copy()
+        if eligible_cal.empty:
+            eligible_cal = cal_summary.copy()
+        fallback_used = True
+
     selected = eligible_cal.sort_values(
         ["val_PR_AUC", "val_brier_score"], ascending=[False, True]
     ).iloc[0]
@@ -643,12 +852,19 @@ def select_calibrated_churn_model(
         selected_method
     )
     cal_summary["selection_rule"] = (
-        "choose highest validation PR-AUC among calibration methods within "
-        f"{brier_tolerance:.3f} validation Brier of the best-Brier method"
+        "choose highest validation PR-AUC among methods within "
+        f"{brier_tolerance:.3f} validation Brier of the best-Brier method "
+        "and passing flat-spot/top-decile guardrails"
     )
+    cal_summary["selection_fallback_used"] = bool(fallback_used)
     cal_summary = cal_summary.sort_values(
-        ["selected_for_champion", "val_PR_AUC", "val_brier_score"],
-        ascending=[False, False, True],
+        [
+            "selected_for_champion",
+            "calibration_selection_eligible",
+            "val_PR_AUC",
+            "val_brier_score",
+        ],
+        ascending=[False, False, False, True],
     ).reset_index(drop=True)
     cal_summary.to_csv(output_dir / "calibration_summary.csv", index=False)
     cal_summary[cal_summary["calibration_method"] == selected_method].to_csv(
@@ -666,6 +882,13 @@ def select_calibrated_churn_model(
     dec = pd.concat([val_dec, test_dec], ignore_index=True)
     dec.insert(0, "calibration_method", selected_method)
     dec.to_csv(output_dir / "calibration_by_decile.csv", index=False)
+
+    flatspot_df = pd.DataFrame(flatspot_rows)
+    if not flatspot_df.empty:
+        flatspot_df["selected_for_champion"] = flatspot_df["calibration_method"].eq(
+            selected_method
+        )
+    flatspot_df.to_csv(output_dir / "calibration_flatspot_diagnostics.csv", index=False)
     return champion_name, selected_method, threshold, selected_model, cols, cal_summary
 
 

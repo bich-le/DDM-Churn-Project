@@ -15,17 +15,17 @@ M5 receives M4's delivered feature table and builds a risk/value/profit ranking 
   3. `predicted_expected_discounted_value_60d = p_future_active × value_if_active`.
 - Expected incremental profit uses discounted value and scenario assumptions.
 - Model selection prioritizes calibrated probability quality for business formulas, not only raw ranking performance.
-- XGBoost is disabled by default for runtime/reproducibility; it can be enabled in `config/paths.yaml` for additional benchmarking.
+- XGBoost benchmarking is enabled in the full-quality configuration; it should be compared under the same calibration and validation protocol as the other candidates.
 - SHAP outputs are used for model explainability, but they are predictive explanations, not causal claims.
 
 ## Churn model
-- Selected reporting model: **Logistic Regression balanced**
-- Calibration selected: **isotonic**
-- Threshold on calibrated probability: **0.07**
-- Test PR-AUC: **0.3120**
-- Test F2-score: **0.4691**
-- Test Brier score: **0.0932**
-- Test mean predicted probability: **0.1209** vs actual churn rate **0.1200**
+- Selected reporting model: **XGBoost weighted**
+- Calibration selected: **sigmoid**
+- Threshold on calibrated probability: **0.13**
+- Test PR-AUC: **0.3652**
+- Test F2-score: **0.4583**
+- Test Brier score: **0.0951**
+- Test mean predicted probability: **0.1214** vs actual churn rate **0.1200**
 
 The selected model should be interpreted as the reporting/champion model for calibrated decision support, not as proof that it is statistically superior to every alternative. With a small sample size and unstable positive-class counts, differences across candidate models may fall within split-level variance.
 
@@ -44,11 +44,11 @@ The profit formula intentionally uses `predicted_discounted_value_60d_if_active`
 If no customers have positive expected profit under the base scenario, `priority_rank` falls back to churn-risk ranking for A/B test candidate selection. In that case, profit ranking should not be interpreted as treatment eligibility; it is only a scenario diagnostic.
 
 ## SHAP top drivers
-- Recency_Capped
 - Inactive_Days_Ratio
-- Camp_Count_TypeA
-- Campaigns_Last_30D
-- Mailer_Responsiveness
+- Recency_Capped
+- IPT_std
+- Avg_Items_Per_Basket
+- IPT_mean
 
 ## Important limitations
 - M5 uses M4's current feature table as-is. A separate M4 feature lineage audit is still recommended.
