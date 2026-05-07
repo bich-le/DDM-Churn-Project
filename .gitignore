@@ -1,89 +1,80 @@
 # ============================================================
-# DATA FILES
+# DATA
 # ============================================================
-# Do not commit Dunnhumby raw/processed/intermediate data.
-# Keep only README/.gitkeep placeholders if needed.
-Data/Raw/**
-Data/Processed/**
-Data/Intermediate/**
-!Data/Raw/.gitkeep
-!Data/Processed/.gitkeep
-!Data/Intermediate/.gitkeep
-!Data/Intermediate/features/.gitkeep
-!Data/Intermediate/analysis/.gitkeep
-!Data/Intermediate/market_basket/.gitkeep
+# Raw/processed/intermediate data are usually large and should
+# not be committed unless the team explicitly decides to track them.
+
+Data/Raw/
+Data/Processed/
+Data/Intermediate/
+
+# Keep data instructions
 !Data/README.md
 
-# ============================================================
-# MODEL / LARGE GENERATED ARTIFACTS
-# ============================================================
-models/*.pkl
-models/*.joblib
-
-# Customer-level or data-derived M5 outputs should be generated locally,
-# not committed to a public GitHub repo.
-models/final_ML_features.csv
-models/churn_predictions.csv
-models/priority_customers_all.csv
-models/high_risk_customers_for_ab_test.csv
-models/discounted_value_labels.csv
-models/clv_training_labels.csv
-models/shap_top_risk_customer_reasons.csv
-models/break_even_analysis.csv
-models/scenario_sensitivity_grid.csv
-models/profitable_treatment_candidates_base.csv
-
-# ============================================================
-# GENERATED M5 INTERNAL DIAGNOSTICS / AUDITS
-# ============================================================
-reports/internal_briefs/m5_pipeline_summary.json
-reports/internal_briefs/repo_input_validation.json
-reports/internal_briefs/M5_shap_status.json
-reports/internal_briefs/M5_v2_change_log.md
-reports/internal_briefs/M5_v3_change_log.md
-reports/internal_briefs/m5_data_audit.csv
-reports/internal_briefs/feature_lineage_audit_template.csv
-reports/internal_briefs/multicollinearity_vif.csv
-reports/internal_briefs/numeric_feature_correlation_pairs.csv
-reports/internal_briefs/value_model_residual_summary.csv
-reports/internal_briefs/value_model_decile_diagnostics.csv
-reports/internal_briefs/voucher_diversification_audit.csv
-reports/internal_briefs/recommendation_merge_audit.csv
-reports/internal_briefs/split_stability_runs.csv
-reports/internal_briefs/split_stability_summary.csv
-reports/internal_briefs/seasonality_audit.csv
-reports/internal_briefs/seasonality_window_comparison.csv
 
 # ============================================================
 # PYTHON CACHE / BUILD ARTIFACTS
 # ============================================================
+
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyo
 *.pyd
+
 .ipynb_checkpoints/
 .jupyter_runtime/
+
 
 # ============================================================
 # VIRTUAL ENVIRONMENTS
 # ============================================================
+
 .venv/
 venv/
 env/
 .virtualenvs/
 
+
 # ============================================================
 # OS / IDE / LOCAL FILES
 # ============================================================
+
 .DS_Store
 Thumbs.db
+
 .vscode/
 .idea/
+
 *.log
+
 
 # ============================================================
 # ACCIDENTAL LOCAL PACKAGE SHADOWING
 # ============================================================
+# Do not commit a local folder named imblearn.
 # The real package should come from imbalanced-learn in requirements.txt.
+
 imblearn/
+
+
+# ============================================================
+# NOTEBOOK / TEMP EXPORTS
+# ============================================================
+
+*.nbconvert.ipynb
+
+
+# ============================================================
+# M5 OUTPUTS
+# ============================================================
+# Do NOT ignore models/ outputs here.
+# M5 outputs are now organized by purpose:
+#
+# models/reports/      -> report/reviewer summaries
+# models/m6_handoff/   -> files for M6 A/B testing
+# models/diagnostics/  -> audit/debug outputs
+# models/artifacts/    -> M5 model artifacts
+#
+# If the team later decides not to push customer-level or binary files,
+# add explicit ignore rules for models/m6_handoff/ and models/artifacts/.

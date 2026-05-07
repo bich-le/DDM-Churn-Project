@@ -1,0 +1,12 @@
+check,value
+feature_rows,2499
+feature_columns,27
+duplicate_household_key,0
+missing_values_total,0
+churn_count,302
+non_churn_count,2197
+churn_rate,0.1208483393357343
+cut_off_day_used_by_m5,651
+customer_base_rows,2500
+missing_from_features_count,1
+missing_from_features_households,2325

@@ -1,2 +1,0 @@
-status,n_rows,future_active_rate,non_churn_rate,match_rate_future_active_vs_non_churn,correlation_future_active_vs_non_churn,active_1_non_churn_1,active_1_non_churn_0,active_0_non_churn_1,active_0_non_churn_0,interpretation
-completed,2499,0.8939575830332133,0.8791516606642658,0.910764305722289,0.5581286298677992,2104,130,93,172,High overlap means p_future_active is close to the inverse churn label and should not be treated as an independent targeting signal.

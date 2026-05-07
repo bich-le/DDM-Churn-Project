@@ -7,6 +7,10 @@ paths:
   intermediate_features_dir: Data/Intermediate/features
   intermediate_analysis_dir: Data/Intermediate/analysis
   models_dir: models
+  models_reports_dir: models/reports
+  models_m6_handoff_dir: models/m6_handoff
+  models_diagnostics_dir: models/diagnostics
+  models_artifacts_dir: models/artifacts
   notebooks_dir: notebooks
   scripts_dir: scripts
   visualization_exports_dir: visualization/exports
@@ -40,9 +44,6 @@ modeling:
   run_smote_baseline: false
 
 expected_profit_scenarios:
-  # Named scenarios are used for customer-level columns such as
-  # expected_incremental_profit_base. These are not factual campaign costs;
-  # they are business assumptions until M6 validates treatment lift.
   conservative:
     gross_margin: 0.20
     save_rate_given_treatment: 0.03
@@ -54,30 +55,7 @@ expected_profit_scenarios:
   optimistic:
     gross_margin: 0.30
     save_rate_given_treatment: 0.08
-    treatment_cost: 3.0
-
-expected_profit_sensitivity_grid:
-  # Sensitivity grid is used only for scenario_sensitivity_grid.csv.
-  # It does not affect churn-model training, calibration, SHAP, or value modeling.
-  enabled: true
-  gross_margins:
-    - 0.20
-    - 0.25
-    - 0.30
-    - 0.40
-  save_rates:
-    - 0.03
-    - 0.05
-    - 0.08
-    - 0.10
-    - 0.15
-  treatment_costs:
-    - 0.25
-    - 0.50
-    - 1.00
-    - 2.00
-    - 3.00
-    - 5.00
+    treatment_cost: 5.0
 
 
 value_modeling:
