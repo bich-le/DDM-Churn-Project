@@ -29,7 +29,7 @@ The pipeline benchmarks:
 - Optional XGBoost weighted model if `modeling.run_xgboost: true`
 - Optional SMOTETomek baseline if `modeling.run_smote_baseline: true`
 
-Current config uses `cv_folds: 5` and `tuning_n_iter: 10` for the Logistic Regression parameter search. Tree models can be enabled as lightweight comparison baselines with `modeling.run_tree_baselines: true`; the default GitHub-friendly run keeps them disabled for runtime reproducibility. This is still not exhaustive optimization. XGBoost is disabled by default for reproducibility/runtime, not because it is invalid. Enable `modeling.run_xgboost: true` to benchmark it under the same pipeline.
+Current config uses `cv_folds: 5` and `tuning_n_iter: 10` for randomized hyperparameter search. Tree baselines and XGBoost are enabled in the full-quality configuration. The search is still not exhaustive, but the XGBoost search space now includes substantially larger `n_estimators` values instead of the earlier lightweight 10/20-tree grid.
 
 Success metrics:
 
@@ -42,7 +42,7 @@ Success metrics:
 | Brier score | Probability quality/calibration |
 
 ### Probability calibration
-The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities, then selects the best validation Brier score. Business formulas use `p_churn_calibrated`, not raw weighted-model probability. Isotonic calibration may create stepwise/flat probability groups; this is acceptable for calibration quality but should not be overinterpreted as a perfectly continuous risk score.
+The champion churn model is calibrated using validation data. The pipeline compares raw, sigmoid, and isotonic probabilities. Calibration selection is multi-objective: it first keeps methods whose validation Brier score is close to the best-Brier method, then chooses the highest validation PR-AUC among those methods. This avoids selecting an isotonic model that has slightly better Brier score but destroys ranking resolution through large flat probability plateaus. Business formulas use `p_churn_calibrated`, not raw weighted-model probability.
 
 ### Two-part discounted value model
 M5 no longer treats value as a single simple CLV model. It uses:
