@@ -1,0 +1,6 @@
+model,best_cv_PR_AUC,best_cv_PR_AUC_std,best_params
+XGBoost weighted,0.36803703373647256,0.057376616452959245,"{""model__colsample_bytree"": 0.75, ""model__learning_rate"": 0.01, ""model__max_depth"": 2, ""model__min_child_weight"": 5, ""model__n_estimators"": 200, ""model__reg_lambda"": 10.0, ""model__subsample"": 0.85}"
+Extra Trees balanced,0.35574573044711766,0.05679881307524055,"{""model__max_depth"": 5, ""model__max_features"": null, ""model__min_samples_leaf"": 5, ""model__n_estimators"": 500}"
+Logistic Regression balanced,0.31552345509420837,0.044709227162394415,"{""model__C"": 0.005}"
+Random Forest balanced,0.3666189717670719,0.06683276667071138,"{""model__max_depth"": null, ""model__max_features"": null, ""model__min_samples_leaf"": 5, ""model__n_estimators"": 200}"
+Dummy prior,,,{}

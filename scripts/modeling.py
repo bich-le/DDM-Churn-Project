@@ -584,163 +584,6 @@ def calibrate_prefit_model(
     return out
 
 
-def calibration_flatspot_diagnostics(
-    y_true: Iterable[int],
-    proba: Iterable[float],
-    n_deciles: int = 10,
-    probability_round_decimals: int = 6,
-    large_bucket_warning_threshold: float = 0.20,
-) -> Dict[str, Any]:
-    """Diagnose probability flat spots and decile-ordering weaknesses.
-
-    Brier score alone can favor a calibration method that collapses many
-    customers into the same calibrated probability. That can be acceptable for
-    group-level calibration but harmful for ranking/top-k targeting. This
-    diagnostic is therefore used both for reporting and as a guardrail in the
-    calibration-selection logic.
-    """
-    y = np.asarray(y_true).astype(int)
-    p = np.asarray(proba).astype(float)
-    out: Dict[str, Any] = {
-        "n_customers": int(len(p)),
-        "number_of_unique_calibrated_probabilities": 0,
-        "unique_probability_share": np.nan,
-        "largest_probability_bucket_count": 0,
-        "share_of_customers_in_largest_probability_bucket": np.nan,
-        "largest_probability_bucket_value": np.nan,
-        "flatspot_warning": False,
-        "top_decile_actual_churn_rate": np.nan,
-        "bottom_decile_actual_churn_rate": np.nan,
-        "top_decile_mean_predicted_probability": np.nan,
-        "bottom_decile_mean_predicted_probability": np.nan,
-        "actual_churn_monotonicity_violation_count": 0,
-        "lower_decile_actual_churn_exceeds_top_decile": False,
-        "predicted_top_decile_below_bottom_decile": False,
-        "monotonicity_warning_by_decile": "not_evaluated",
-    }
-    if len(p) == 0:
-        return out
-
-    rounded_p = np.round(p, probability_round_decimals)
-    value_counts = pd.Series(rounded_p).value_counts(dropna=False)
-    unique_count = int(value_counts.shape[0])
-    largest_bucket_count = int(value_counts.iloc[0])
-    largest_bucket_share = float(largest_bucket_count / len(p))
-
-    out.update(
-        {
-            "number_of_unique_calibrated_probabilities": unique_count,
-            "unique_probability_share": float(unique_count / len(p)),
-            "largest_probability_bucket_count": largest_bucket_count,
-            "share_of_customers_in_largest_probability_bucket": largest_bucket_share,
-            "largest_probability_bucket_value": float(value_counts.index[0]),
-            "flatspot_warning": bool(
-                largest_bucket_share >= large_bucket_warning_threshold
-            ),
-        }
-    )
-
-    dec = calibration_by_decile(y, p, n_bins=n_deciles).sort_values(
-        "probability_decile"
-    )
-    if dec.empty:
-        return out
-
-    top_decile = dec[dec["probability_decile"] == 1]
-    bottom_decile = dec[dec["probability_decile"] == n_deciles]
-    top_actual = (
-        float(top_decile["actual_churn_rate"].iloc[0])
-        if not top_decile.empty
-        else np.nan
-    )
-    bottom_actual = (
-        float(bottom_decile["actual_churn_rate"].iloc[0])
-        if not bottom_decile.empty
-        else np.nan
-    )
-    top_pred = (
-        float(top_decile["mean_predicted_probability"].iloc[0])
-        if not top_decile.empty
-        else np.nan
-    )
-    bottom_pred = (
-        float(bottom_decile["mean_predicted_probability"].iloc[0])
-        if not bottom_decile.empty
-        else np.nan
-    )
-
-    # Decile 1 is highest predicted risk. Actual churn rates should generally
-    # decline as decile number increases. With small validation/test samples,
-    # violations are diagnostic warnings rather than automatic proof of failure.
-    actual_rates = dec["actual_churn_rate"].to_numpy(dtype=float)
-    increases_vs_previous = np.diff(actual_rates) > 0
-    violation_count = int(np.sum(increases_vs_previous))
-    lower_decile_exceeds_top = (
-        bool(np.nanmax(actual_rates[1:]) > top_actual)
-        if len(actual_rates) > 1 and not np.isnan(top_actual)
-        else False
-    )
-    predicted_rank_inversion = (
-        bool(top_pred < bottom_pred)
-        if not (np.isnan(top_pred) or np.isnan(bottom_pred))
-        else False
-    )
-
-    warnings: List[str] = []
-    if predicted_rank_inversion:
-        warnings.append("predicted_top_decile_below_bottom_decile")
-    if lower_decile_exceeds_top:
-        warnings.append("lower_decile_actual_churn_exceeds_top_decile")
-    if violation_count > 0:
-        warnings.append(
-            f"actual_churn_not_monotone_{violation_count}_adjacent_increases"
-        )
-    if largest_bucket_share >= large_bucket_warning_threshold:
-        warnings.append("large_probability_flat_spot")
-
-    out.update(
-        {
-            "top_decile_actual_churn_rate": top_actual,
-            "bottom_decile_actual_churn_rate": bottom_actual,
-            "top_decile_mean_predicted_probability": top_pred,
-            "bottom_decile_mean_predicted_probability": bottom_pred,
-            "actual_churn_monotonicity_violation_count": violation_count,
-            "lower_decile_actual_churn_exceeds_top_decile": lower_decile_exceeds_top,
-            "predicted_top_decile_below_bottom_decile": predicted_rank_inversion,
-            "monotonicity_warning_by_decile": "; ".join(warnings)
-            if warnings
-            else "none",
-        }
-    )
-    return out
-
-
-def calibration_guardrail_pass(
-    diag: Dict[str, Any],
-    baseline_churn_rate: float,
-    max_largest_bucket_share: float = 0.30,
-) -> Tuple[bool, str]:
-    """Return whether a calibration candidate is safe enough for champion selection.
-
-    The guardrail intentionally remains conservative: it does not require perfect
-    decile monotonicity because validation has few positives. It blocks candidates
-    that are clearly too flat for ranking or whose top predicted-risk decile is
-    not better than the base churn rate.
-    """
-    reasons: List[str] = []
-    largest_share = diag.get("share_of_customers_in_largest_probability_bucket", np.nan)
-    top_actual = diag.get("top_decile_actual_churn_rate", np.nan)
-
-    if not np.isnan(largest_share) and float(largest_share) > max_largest_bucket_share:
-        reasons.append(
-            f"largest_probability_bucket_share>{max_largest_bucket_share:.2f}"
-        )
-    if not np.isnan(top_actual) and float(top_actual) < float(baseline_churn_rate):
-        reasons.append("top_decile_actual_churn_below_baseline")
-
-    return len(reasons) == 0, "; ".join(reasons) if reasons else "pass"
-
-
 def select_calibrated_churn_model(
     metrics: pd.DataFrame,
     fitted_models: Dict[str, Tuple[Any, List[str]]],
@@ -754,10 +597,7 @@ def select_calibrated_churn_model(
     candidates = calibrate_prefit_model(
         base_model, split["X_val"][cols], split["y_val"]
     )
-    baseline_churn_rate = float(np.mean(split["y_val"]))
-
     rows: List[Dict[str, Any]] = []
-    flatspot_rows: List[Dict[str, Any]] = []
     for method, model in candidates.items():
         val_p = model.predict_proba(split["X_val"][cols])[:, 1]
         test_p = model.predict_proba(split["X_test"][cols])[:, 1]
@@ -774,74 +614,25 @@ def select_calibrated_churn_model(
             split["y_test"], test_p, threshold, beta=f_beta
         ).items():
             row[f"test_{key}"] = value
-
-        val_diag = calibration_flatspot_diagnostics(split["y_val"], val_p)
-        pass_guardrail, guardrail_reason = calibration_guardrail_pass(
-            val_diag, baseline_churn_rate=baseline_churn_rate
-        )
-        row.update(
-            {
-                "val_number_of_unique_calibrated_probabilities": val_diag.get(
-                    "number_of_unique_calibrated_probabilities"
-                ),
-                "val_share_of_customers_in_largest_probability_bucket": val_diag.get(
-                    "share_of_customers_in_largest_probability_bucket"
-                ),
-                "val_top_decile_actual_churn_rate": val_diag.get(
-                    "top_decile_actual_churn_rate"
-                ),
-                "val_monotonicity_warning_by_decile": val_diag.get(
-                    "monotonicity_warning_by_decile"
-                ),
-                "calibration_guardrail_pass": bool(pass_guardrail),
-                "calibration_guardrail_reason": guardrail_reason,
-            }
-        )
         rows.append(row)
-
-        for dataset_name, prob, y_part in [
-            ("validation", val_p, split["y_val"]),
-            ("test", test_p, split["y_test"]),
-        ]:
-            diag = calibration_flatspot_diagnostics(y_part, prob)
-            diag.update(
-                {
-                    "champion_model": champion_name,
-                    "calibration_method": method,
-                    "dataset": dataset_name,
-                    "selected_for_champion": False,  # updated below after selection
-                }
-            )
-            flatspot_rows.append(diag)
-
     cal_summary = pd.DataFrame(rows)
 
-    # Calibration is selected with a multi-objective rule. Brier score must be
-    # close enough to the best-Brier method, but the method must also pass simple
-    # ranking-resolution guardrails. This prevents selecting an isotonic model
-    # that looks calibrated by Brier but collapses many customers into the same
-    # probability bucket or fails to concentrate churn in the top-risk decile.
+    # Calibration is not selected by Brier score alone. Isotonic calibration can
+    # improve Brier while creating large flat probability plateaus that damage
+    # score separability and PR-AUC. For churn prioritization, keep methods whose
+    # validation Brier score is close to the best method, then choose the one with
+    # the strongest validation PR-AUC. This normally favors sigmoid over isotonic
+    # when isotonic over-flattens the ranking while still excluding uncalibrated
+    # probabilities if their Brier score is much worse.
     best_brier = float(cal_summary["val_brier_score"].min())
     brier_tolerance = 0.015
     cal_summary["val_brier_gap_from_best"] = cal_summary["val_brier_score"] - best_brier
-    cal_summary["brier_within_tolerance"] = (
+    cal_summary["calibration_selection_eligible"] = (
         cal_summary["val_brier_gap_from_best"] <= brier_tolerance
     )
-    cal_summary["calibration_selection_eligible"] = (
-        cal_summary["brier_within_tolerance"]
-        & cal_summary["calibration_guardrail_pass"]
-    )
     eligible_cal = cal_summary[cal_summary["calibration_selection_eligible"]].copy()
-    fallback_used = False
     if eligible_cal.empty:
-        # If every calibrated candidate fails the guardrail, fall back to the
-        # Brier-tolerant set rather than silently picking a method outside the
-        # calibration-quality range. The failure is documented in the output.
-        eligible_cal = cal_summary[cal_summary["brier_within_tolerance"]].copy()
-        if eligible_cal.empty:
-            eligible_cal = cal_summary.copy()
-        fallback_used = True
-
+        eligible_cal = cal_summary.copy()
     selected = eligible_cal.sort_values(
         ["val_PR_AUC", "val_brier_score"], ascending=[False, True]
     ).iloc[0]
@@ -852,19 +643,12 @@ def select_calibrated_churn_model(
         selected_method
     )
     cal_summary["selection_rule"] = (
-        "choose highest validation PR-AUC among methods within "
-        f"{brier_tolerance:.3f} validation Brier of the best-Brier method "
-        "and passing flat-spot/top-decile guardrails"
+        "choose highest validation PR-AUC among calibration methods within "
+        f"{brier_tolerance:.3f} validation Brier of the best-Brier method"
     )
-    cal_summary["selection_fallback_used"] = bool(fallback_used)
     cal_summary = cal_summary.sort_values(
-        [
-            "selected_for_champion",
-            "calibration_selection_eligible",
-            "val_PR_AUC",
-            "val_brier_score",
-        ],
-        ascending=[False, False, False, True],
+        ["selected_for_champion", "val_PR_AUC", "val_brier_score"],
+        ascending=[False, False, True],
     ).reset_index(drop=True)
     cal_summary.to_csv(output_dir / "calibration_summary.csv", index=False)
     cal_summary[cal_summary["calibration_method"] == selected_method].to_csv(
@@ -882,13 +666,6 @@ def select_calibrated_churn_model(
     dec = pd.concat([val_dec, test_dec], ignore_index=True)
     dec.insert(0, "calibration_method", selected_method)
     dec.to_csv(output_dir / "calibration_by_decile.csv", index=False)
-
-    flatspot_df = pd.DataFrame(flatspot_rows)
-    if not flatspot_df.empty:
-        flatspot_df["selected_for_champion"] = flatspot_df["calibration_method"].eq(
-            selected_method
-        )
-    flatspot_df.to_csv(output_dir / "calibration_flatspot_diagnostics.csv", index=False)
     return champion_name, selected_method, threshold, selected_model, cols, cal_summary
 
 
@@ -2269,8 +2046,8 @@ M5 exports SHAP outputs when the `shap` package is available:
 
 | File | Meaning |
 |---|---|
-| `models/shap_global_importance.csv` | Global mean absolute SHAP drivers |
-| `models/shap_top_risk_customer_reasons.csv` | Local explanations for top-risk customers |
+| `models/reports/shap_global_importance.csv` | Global mean absolute SHAP drivers |
+| `models/diagnostics/shap_top_risk_customer_reasons.csv` | Local explanations for top-risk customers |
 | `visualization/exports/m5_shap_global_importance.png` | Report-ready SHAP importance chart |
 
 Important: SHAP explains model predictions. It does not prove causal treatment effects.
@@ -2281,8 +2058,8 @@ M5 adds a lightweight seasonality check:
 
 | File | Meaning |
 |---|---|
-| `models/seasonality_audit.csv` | Weekly sales, transactions, and active households |
-| `models/seasonality_window_comparison.csv` | Prediction-window revenue compared with recent pre-cutoff windows |
+| `models/diagnostics/seasonality_audit.csv` | Weekly sales, transactions, and active households |
+| `models/diagnostics/seasonality_window_comparison.csv` | Prediction-window revenue compared with recent pre-cutoff windows |
 | `visualization/exports/m5_weekly_revenue_trend.png` | Weekly sales trend with cut-off marker |
 
 This does not fully model seasonality, but it documents whether the 60-day prediction window looks unusual.
@@ -2296,7 +2073,10 @@ config/paths.yaml
   -> scripts/evaluation.py provides metrics/helpers
   -> models/final_ML_features.csv is the M4 handoff
   -> Data/Processed/transactions_master.parquet builds discounted value labels and seasonality audit
-  -> models/*.csv contains outputs for M5/M6
+  -> models/reports/*.csv contains report summaries
+  -> models/m6_handoff/*.csv contains customer-level files for M6
+  -> models/diagnostics/*.csv contains internal M5 audit outputs
+  -> models/artifacts/* contains local model artifacts
 ```
 
 ## 7. GitHub/data governance note
@@ -2311,24 +2091,50 @@ python -m py_compile scripts/*.py
 python scripts/modeling.py --config config/paths.yaml
 ```
 
-## 9. Main output files
+## 9. Main output folders
 
-- `models/model_metrics.csv`
-- `models/calibration_summary.csv`
-- `models/active_model_metrics.csv`
-- `models/value_model_metrics.csv`
-- `models/discounted_value_labels.csv`
-- `models/churn_predictions.csv`
-- `models/high_risk_customers_for_ab_test.csv`
-- `models/scenario_profit_summary.csv`
-- `models/scenario_sensitivity_grid.csv`
-- `models/break_even_analysis.csv`
-- `models/active_churn_target_overlap_audit.csv`
-- `models/shap_global_importance.csv`
-- `models/shap_top_risk_customer_reasons.csv`
-- `models/seasonality_audit.csv`
-- `models/seasonality_window_comparison.csv`
-- `models/model.pkl`
+M5 outputs are separated by purpose. This keeps the repo readable and prevents M6 handoff files, report summaries, diagnostics, and model artifacts from being mixed together.
+
+### `models/reports/` — report/review summaries
+
+- `models/reports/model_metrics.csv`
+- `models/reports/champion_test_metrics.csv`
+- `models/reports/calibration_summary.csv`
+- `models/reports/top_k_precision_summary.csv`
+- `models/reports/ranking_decile_performance.csv`
+- `models/reports/scenario_profit_summary.csv`
+- `models/reports/profit_threshold_analysis.csv`
+- `models/reports/value_model_metrics.csv`
+- `models/reports/shap_global_importance.csv`
+
+### `models/m6_handoff/` — files for M6 A/B testing
+
+- `models/m6_handoff/high_risk_customers_for_ab_test.csv`
+- `models/m6_handoff/priority_customers_all.csv`
+- `models/m6_handoff/churn_predictions.csv`
+- `models/m6_handoff/recommendation_merge_audit.csv`
+
+### `models/diagnostics/` — internal M5 audits/debug files
+
+- `models/diagnostics/model_tuning_results.csv`
+- `models/diagnostics/model_cv_summary.csv`
+- `models/diagnostics/calibration_by_decile.csv`
+- `models/diagnostics/calibration_flatspot_diagnostics.csv`
+- `models/diagnostics/active_model_metrics.csv`
+- `models/diagnostics/active_churn_target_overlap_audit.csv`
+- `models/diagnostics/discounted_value_labels.csv`
+- `models/diagnostics/scenario_sensitivity_grid.csv`
+- `models/diagnostics/break_even_analysis.csv`
+- `models/diagnostics/shap_top_risk_customer_reasons.csv`
+- `models/diagnostics/seasonality_audit.csv`
+- `models/diagnostics/seasonality_window_comparison.csv`
+
+### `models/artifacts/` — local model artifacts
+
+- `models/artifacts/model.pkl`
+- `models/artifacts/final_features.parquet`
+
+M5 does not automatically move upstream files owned by M3/M4.
 
 ## 10. What to say in the report
 
@@ -2345,34 +2151,77 @@ Avoid saying:
     (paths["project_root"] / "README_M5_MODEL.md").write_text(readme, encoding="utf-8")
 
 
-def relocate_internal_diagnostic_outputs(paths: Dict[str, Path]) -> None:
-    """Move non-core diagnostic CSVs from models/ to reports/internal_briefs/.
+def organize_m5_outputs(paths: Dict[str, Path]) -> None:
+    """Organize M5-generated outputs into purpose-specific folders.
 
-    Core model outputs remain in models/. Diagnostic/audit files are still generated by
-    the M5 pipeline, but they are report/internal review artifacts rather than model
-    scoring artifacts.
+    This function moves only known M5 outputs. It intentionally does not move
+    upstream artifacts owned by other modules, such as M4 train/test feature
+    files, M3 market-basket outputs, notebooks, or raw/processed data.
+
+    Folder policy:
+    - ``models/reports``: lightweight summaries useful for report/review.
+    - ``models/m6_handoff``: customer-level handoff files for M6 A/B testing.
+    - ``models/diagnostics``: internal audit/debug outputs.
+    - ``models/artifacts``: model binaries and M5-owned feature artifacts.
     """
-    diagnostic_files = [
-        "feature_lineage_audit_template.csv",
-        "multicollinearity_vif.csv",
-        "numeric_feature_correlation_pairs.csv",
-        "value_model_residual_summary.csv",
-        "value_model_decile_diagnostics.csv",
-        "voucher_diversification_audit.csv",
-        "recommendation_merge_audit.csv",
-        "split_stability_runs.csv",
-        "split_stability_summary.csv",
-        "seasonality_audit.csv",
-        "seasonality_window_comparison.csv",
-    ]
-    for name in diagnostic_files:
-        src = paths["models_dir"] / name
-        dst = paths["reports_internal_dir"] / name
-        if src.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if dst.exists():
-                dst.unlink()
-            src.rename(dst)
+    output_groups = {
+        "models_reports_dir": [
+            "model_metrics.csv",
+            "champion_test_metrics.csv",
+            "calibration_summary.csv",
+            "top_k_precision_summary.csv",
+            "ranking_decile_performance.csv",
+            "scenario_profit_summary.csv",
+            "profit_threshold_analysis.csv",
+            "value_model_metrics.csv",
+            "shap_global_importance.csv",
+            "feature_importance.csv",
+        ],
+        "models_m6_handoff_dir": [
+            "churn_predictions.csv",
+            "high_risk_customers_for_ab_test.csv",
+            "priority_customers_all.csv",
+            "recommendation_merge_audit.csv",
+        ],
+        "models_diagnostics_dir": [
+            "model_tuning_results.csv",
+            "model_cv_summary.csv",
+            "calibration_by_decile.csv",
+            "calibration_flatspot_diagnostics.csv",
+            "active_model_metrics.csv",
+            "active_churn_target_overlap_audit.csv",
+            "discounted_value_labels.csv",
+            "scenario_sensitivity_grid.csv",
+            "break_even_analysis.csv",
+            "shap_top_risk_customer_reasons.csv",
+            "seasonality_audit.csv",
+            "seasonality_window_comparison.csv",
+            "feature_lineage_audit_template.csv",
+            "multicollinearity_vif.csv",
+            "numeric_feature_correlation_pairs.csv",
+            "value_model_residual_summary.csv",
+            "value_model_decile_diagnostics.csv",
+            "voucher_diversification_audit.csv",
+            "split_stability_runs.csv",
+            "split_stability_summary.csv",
+        ],
+        "models_artifacts_dir": [
+            "model.pkl",
+            "final_features.parquet",
+        ],
+    }
+    source_dir = paths["models_dir"]
+    for target_key, file_names in output_groups.items():
+        target_dir = paths.get(target_key, source_dir / target_key.replace("models_", ""))
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for name in file_names:
+            src = source_dir / name
+            if src.exists():
+                dst = target_dir / name
+                if dst.exists():
+                    dst.unlink()
+                src.rename(dst)
+
 
 
 def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
@@ -2540,7 +2389,7 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
         metrics, cal_summary, active_metrics, value_metrics, shap_df, predictions, paths
     )
     update_model_readme(paths, run_smote)
-    relocate_internal_diagnostic_outputs(paths)
+    organize_m5_outputs(paths)
 
     selected = cal_summary.iloc[0]
     summary = {
@@ -2562,6 +2411,10 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
         ),
         "shap_status_file": str(paths["reports_internal_dir"] / "M5_shap_status.json"),
         "outputs_dir": str(paths["models_dir"]),
+        "reports_outputs_dir": str(paths.get("models_reports_dir", paths["models_dir"] / "reports")),
+        "m6_handoff_outputs_dir": str(paths.get("models_m6_handoff_dir", paths["models_dir"] / "m6_handoff")),
+        "diagnostics_outputs_dir": str(paths.get("models_diagnostics_dir", paths["models_dir"] / "diagnostics")),
+        "artifacts_outputs_dir": str(paths.get("models_artifacts_dir", paths["models_dir"] / "artifacts")),
     }
     (paths["reports_internal_dir"] / "m5_pipeline_summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"

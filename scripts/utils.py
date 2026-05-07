@@ -104,13 +104,12 @@ def resolve_project_paths(config: Dict[str, Any], project_root: Path) -> Dict[st
 
 
 def ensure_project_structure(paths: Dict[str, Path]) -> None:
-    """Create standard output directories used by the project."""
-    for key in [
-        "intermediate_features_dir",
-        "intermediate_analysis_dir",
-        "models_dir",
-        "visualization_exports_dir",
-        "reports_internal_dir",
-        "reports_final_paper_dir",
-    ]:
-        paths[key].mkdir(parents=True, exist_ok=True)
+    """Create standard output directories used by the project.
+
+    Any resolved config key ending with ``_dir`` is treated as an output
+    directory. This lets M5 define subfolders such as ``models/reports`` and
+    ``models/m6_handoff`` without requiring a hard-coded update here.
+    """
+    for key, path in paths.items():
+        if key.endswith("_dir"):
+            path.mkdir(parents=True, exist_ok=True)
