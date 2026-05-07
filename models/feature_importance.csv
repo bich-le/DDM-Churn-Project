@@ -1,163 +1,163 @@
 feature,importance,business_interpretation,causality_warning
-Recency_Capped,0.7639366538075554,Recent inactivity or time since engagement; usually linked with churn risk.,Predictive association only; causal effect requires A/B testing.
-IPT_std,0.25287210496182616,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-active_weeks_ratio,0.24097587063121395,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Campaigns_Last_30D,0.23592370609165184,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
-Inactive_Days_Ratio,0.2028011077510535,Recent inactivity or time since engagement; usually linked with churn risk.,Predictive association only; causal effect requires A/B testing.
-Mailer_Responsiveness,0.20016997345204607,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Camp_Count_TypeA,0.18659189415190516,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_298,0.17987217432096766,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_433,0.14807622197180736,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_310,0.14519654353137185,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_286,0.14432529385602935,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_321,0.14270799793988007,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Monetary,0.1260528501811625,Customer spending level or basket value.,Predictive association only; causal effect requires A/B testing.
-Rolling_Freq_Slope,0.1257612143870347,Purchase frequency / activity intensity.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_330,0.11617271475613355,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_309,0.11305082175966688,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_424,0.11165293350178913,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_345,0.1092244580707998,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_368,0.10102378403971786,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_32004,0.10071430197651343,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_300,0.10000550920105049,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_364,0.09871992375487182,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Frequency,0.09662312664962701,Purchase frequency / activity intensity.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_381,0.09381456894063354,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_446,0.09160597946412291,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_380,0.09059334988640504,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_320,0.08897765920090171,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Total_Campaigns_Received,0.08782594818872502,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_346,0.08710200530115526,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_372,0.08512826506304234,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_292,0.08159365954490348,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_439,0.08130975211796002,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_369,0.07993555121443856,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_374,0.07971009973029818,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_445,0.07968616545870129,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_367,0.07899097884393153,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_334,0.0778372831361863,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_450,0.07577673650154941,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_288,0.07264122826337463,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_289,0.07084784011433666,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_382,0.06777146971042776,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Basket_Value_Std,0.06769196908859308,Customer spending level or basket value.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_429,0.06750138796016025,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31742,0.06680248357896075,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_408,0.0661508504381378,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_360,0.06532186144066615,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_375,0.06311142165751811,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31782,0.06259112358122426,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_335,0.06227342541839634,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_293,0.06199573104325678,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-coupon_dependency,0.05997735046238782,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
-Days_Since_Last_Camp,0.059531014883169676,Recent inactivity or time since engagement; usually linked with churn risk.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_354,0.05884419863923874,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_447,0.057461201928652686,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_358,0.05541997983255702,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_438,0.05479548109517171,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3235,0.05313659120378184,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_402,0.051783682890944496,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_421,0.05121131096603062,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_311,0.04983315822505692,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3297,0.04830747252440981,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_363,0.047556568091378114,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31401,0.04702178604376214,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_427,0.04659983854332232,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Avg_Items_Per_Basket,0.04584052562439684,Customer spending level or basket value.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_403,0.043489587680348565,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_414,0.04230446358993933,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_448,0.04223513409115672,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_412,0.04162836402042621,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-customer_lifetime,0.04014655692559465,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_352,0.040020376580791724,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_338,0.039434066309174204,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_316,0.039177439955552125,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_297,0.03911075324422786,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_420,0.03743412116477739,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_340,0.036528412224267955,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_333,0.03520328579268392,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_319,0.034514990762389335,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_317,0.034269047122541856,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_379,0.03313727538169793,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_432,0.03312185241854748,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_299,0.03309708710885145,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_304,0.033088370656774016,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31762,0.03190004741177723,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_306,0.03085980600107261,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_365,0.02920777232618826,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_391,0.029206240152271995,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_318,0.028668668115619873,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_2863,0.028589694082089043,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_327,0.02853867532901178,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-IPT_mean,0.028003972202068492,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_442,0.02766050816521362,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_356,0.027549570741265857,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_337,0.02718752283328111,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_315,0.02666980375369145,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_361,0.026621131370263288,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_401,0.02614707903821693,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_322,0.025465612331285453,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_324,0.02523510729842234,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Private_Brand_Ratio,0.024302279844255786,Brand preference pattern.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31642,0.023921535651250037,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_627,0.0206517449395585,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_441,0.01781384704767604,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31582,0.017190580072961988,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_359,0.0170016784338747,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_404,0.016642013201833474,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_34011,0.01643836192272046,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-promo_usage_ratio,0.01633541402961084,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_722,0.016172769761919323,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_295,0.015710615290452395,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_366,0.015390263150224378,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_410,0.014868047788198405,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3001,0.014557121510070896,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_443,0.014521695549649534,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_2971,0.014475289671886282,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_362,0.014433296941491336,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_329,0.014401791715127437,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Camp_Count_TypeB,0.014083163414257343,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_339,0.0140319680997781,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_33923,0.013315661110856818,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_389,0.013037900918634729,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_370,0.012774023800230244,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3262,0.012320847019849174,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_406,0.010918232104230867,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3177,0.010462108785051574,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_422,0.009731412684642558,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_296,0.00869590269047575,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3333,0.008464123329239216,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_2882,0.008307987649141568,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-IPT_CV,0.008303626335232642,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_436,0.008027438032245466,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3182,0.007898094429175771,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_34007,0.0075496759510404925,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_176,0.0075319037413570005,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_400,0.007488278545660257,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_384,0.007307407405749215,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_323,0.00690774790642304,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3287,0.006492274638250461,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_2888,0.006292614459750331,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_673,0.005987377308037954,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_483,0.005949898533694399,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_773,0.005493619531956078,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3316,0.005309616270599687,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_634,0.005254028634516453,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-has_demographic_info,0.005239663924660159,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_396,0.005168651060924954,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Camp_Count_TypeC,0.00513453056324764,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_313,0.005119931488549985,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Display_Responsiveness,0.00494535956910314,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_31862,0.0048183207833682705,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_355,0.004698518131955033,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_33863,0.004580513094111208,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_3217,0.004395506324799824,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_707,0.0040606935593581455,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_616,0.004007467663421462,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_415,0.0037936954788994003,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_30685,0.003521108516420015,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_2817,0.0031797567589462576,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_569,0.002335482315264492,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_343,0.0015306617469217371,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_388,0.0012648554791252745,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
-Primary_Store_ID_341,0.0004553510717697131,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Inactive_Days_Ratio,0.118036784,Recent inactivity or time since engagement; usually linked with churn risk.,Predictive association only; causal effect requires A/B testing.
+Recency_Capped,0.10285895,Recent inactivity or time since engagement; usually linked with churn risk.,Predictive association only; causal effect requires A/B testing.
+Rolling_Freq_Slope,0.07706249,Purchase frequency / activity intensity.,Predictive association only; causal effect requires A/B testing.
+IPT_std,0.05434535,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+active_weeks_ratio,0.053650383,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Total_Campaigns_Received,0.050367393,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
+coupon_dependency,0.047131673,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
+Camp_Count_TypeB,0.046448972,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Avg_Items_Per_Basket,0.043149285,Customer spending level or basket value.,Predictive association only; causal effect requires A/B testing.
+Frequency,0.04268268,Purchase frequency / activity intensity.,Predictive association only; causal effect requires A/B testing.
+Days_Since_Last_Camp,0.042028226,Recent inactivity or time since engagement; usually linked with churn risk.,Predictive association only; causal effect requires A/B testing.
+Mailer_Responsiveness,0.040650487,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Basket_Value_Std,0.039289106,Customer spending level or basket value.,Predictive association only; causal effect requires A/B testing.
+IPT_mean,0.037787247,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+IPT_CV,0.03586784,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Camp_Count_TypeA,0.034763485,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+promo_usage_ratio,0.03192137,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
+Monetary,0.03123953,Customer spending level or basket value.,Predictive association only; causal effect requires A/B testing.
+Private_Brand_Ratio,0.028642762,Brand preference pattern.,Predictive association only; causal effect requires A/B testing.
+Display_Responsiveness,0.02620948,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_356,0.01586646,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+customer_lifetime,0.0,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Campaigns_Last_30D,0.0,"Promotion, coupon, or campaign responsiveness.",Predictive association only; causal effect requires A/B testing.
+has_demographic_info,0.0,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_176,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Camp_Count_TypeC,0.0,Predictive association used by the model; not a causal claim.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_286,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_2863,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_288,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_2882,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_2888,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_289,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_292,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_2817,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_293,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_295,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_297,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_296,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_298,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_299,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_300,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_2971,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_304,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_306,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_30685,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_309,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_310,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_311,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_313,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3001,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_315,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31582,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_316,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31642,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_317,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31742,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31762,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3177,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31782,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_318,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3182,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31862,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_319,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_320,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_32004,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_31401,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_321,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3217,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_323,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_322,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_324,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3262,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_327,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3235,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_329,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3297,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_330,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3316,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_333,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3333,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_334,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_3287,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_335,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_337,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_33863,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_338,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_33923,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_340,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_34007,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_339,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_34011,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_341,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_345,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_343,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_346,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_352,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_354,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_355,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_358,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_359,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_360,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_361,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_362,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_363,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_364,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_365,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_366,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_367,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_368,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_369,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_370,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_372,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_374,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_375,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_379,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_380,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_381,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_382,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_384,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_388,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_389,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_391,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_396,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_400,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_401,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_402,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_403,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_404,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_406,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_408,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_410,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_412,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_414,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_415,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_420,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_421,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_422,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_424,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_427,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_429,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_432,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_433,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_436,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_438,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_439,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_441,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_442,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_443,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_445,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_446,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_447,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_448,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_450,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_483,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_569,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_616,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_627,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_634,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_673,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_707,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_722,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.
+Primary_Store_ID_773,0.0,Primary store/location pattern encoded as categorical information.,Predictive association only; causal effect requires A/B testing.

@@ -30,15 +30,19 @@ modeling:
   validation_size: 0.25
   random_state: 42
   f_beta: 2
-  n_estimators: 50
   n_jobs: 1
-  cv_folds: 2
-  tuning_n_iter: 2
-  run_tree_value_models: false
-  run_xgboost: false
+  cv_folds: 5
+  tuning_n_iter: 40
+  n_estimators: 500
+  run_tree_value_models: true
+  run_tree_baselines: true
+  run_xgboost: true
   run_smote_baseline: false
 
 expected_profit_scenarios:
+  # Named scenarios are used for customer-level columns such as
+  # expected_incremental_profit_base. These are not factual campaign costs;
+  # they are business assumptions until M6 validates treatment lift.
   conservative:
     gross_margin: 0.20
     save_rate_given_treatment: 0.03
@@ -50,7 +54,30 @@ expected_profit_scenarios:
   optimistic:
     gross_margin: 0.30
     save_rate_given_treatment: 0.08
-    treatment_cost: 5.0
+    treatment_cost: 3.0
+
+expected_profit_sensitivity_grid:
+  # Sensitivity grid is used only for scenario_sensitivity_grid.csv.
+  # It does not affect churn-model training, calibration, SHAP, or value modeling.
+  enabled: true
+  gross_margins:
+    - 0.20
+    - 0.25
+    - 0.30
+    - 0.40
+  save_rates:
+    - 0.03
+    - 0.05
+    - 0.08
+    - 0.10
+    - 0.15
+  treatment_costs:
+    - 0.25
+    - 0.50
+    - 1.00
+    - 2.00
+    - 3.00
+    - 5.00
 
 
 value_modeling:
@@ -63,8 +90,8 @@ value_modeling:
 
 explainability:
   run_shap: true
-  shap_sample_size: 200
-  shap_top_n_customers: 20
+  shap_sample_size: 500
+  shap_top_n_customers: 30
 
 seasonality_audit:
   run: true
