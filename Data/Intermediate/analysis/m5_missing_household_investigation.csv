@@ -1,0 +1,2 @@
+household_key,txn_rows,first_day,last_day,pre_cutoff_txn_rows,post_cutoff_txn_rows,total_sales
+2325,22,671,697,0,22,106.36

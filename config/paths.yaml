@@ -1,6 +1,5 @@
 project:
   name: DDM-Churn-Project
-
 paths:
   data_raw_dir: Data/Raw
   data_processed_dir: Data/Processed
@@ -16,21 +15,21 @@ paths:
   visualization_exports_dir: visualization/exports
   reports_internal_dir: reports/internal_briefs
   reports_final_paper_dir: reports/final_paper
-
+  models_psm_inputs_dir: models/psm_inputs
 inputs:
   feature_table_csv: models/final_ML_features.csv
   transaction_master_parquet: Data/Processed/transactions_master.parquet
   customer_base_parquet: Data/Processed/customer_base_labeled.parquet
   voucher_recommendations_csv: Data/Intermediate/market_basket/personalized_voucher_recommendations.csv
   final_campaign_rules_csv: Data/Intermediate/market_basket/final_campaign_rules.csv
-
+  psm_treatment_flags_csv: models/psm_inputs/psm_treatment_flags.csv
 modeling:
   id_col: household_key
   target_col: churn_flag
   categorical_cols:
-    - Primary_Store_ID
+  - Primary_Store_ID
   cut_off_day: 651
-  test_size: 0.20
+  test_size: 0.2
   validation_size: 0.25
   random_state: 42
   f_beta: 2
@@ -42,10 +41,9 @@ modeling:
   run_tree_baselines: true
   run_xgboost: true
   run_smote_baseline: false
-
 expected_profit_scenarios:
   conservative:
-    gross_margin: 0.20
+    gross_margin: 0.2
     save_rate_given_treatment: 0.03
     treatment_cost: 5.0
   base:
@@ -53,38 +51,66 @@ expected_profit_scenarios:
     save_rate_given_treatment: 0.05
     treatment_cost: 5.0
   optimistic:
-    gross_margin: 0.30
+    gross_margin: 0.3
     save_rate_given_treatment: 0.08
     treatment_cost: 5.0
-
-
 value_modeling:
   prediction_horizon_days: 60
   default_annual_discount_rate: 0.08
   candidate_annual_discount_rates:
-    - 0.05
-    - 0.08
-    - 0.10
-
+  - 0.05
+  - 0.08
+  - 0.1
 explainability:
   run_shap: true
   shap_sample_size: 500
   shap_top_n_customers: 30
-
 seasonality_audit:
   run: true
-
 recommendations:
   merge_recommendations: true
   top_n_vouchers: 3
-
 evaluation:
   top_k_shares:
-    - 0.05
-    - 0.10
-    - 0.20
+  - 0.05
+  - 0.1
+  - 0.2
   decile_count: 10
-
 business_decision:
   use_profit_based_threshold: true
   min_expected_incremental_profit: 0.0
+psm:
+  treatment_col: is_treated
+  treatment_cutoff_day: 651
+  output_propensity_scores_csv: models/m6_handoff/propensity_scores_for_psm.csv
+  output_model_summary_csv: models/diagnostics/psm_propensity_model_summary.csv
+  output_covariates_used_csv: models/diagnostics/psm_covariates_used.csv
+  random_state: 42
+  cv_folds: 5
+  exclude_feature_keywords:
+  - churn
+  - future
+  - active_flag
+  - revenue_60d
+  - discounted_future
+  - p_churn
+  - expected
+  - profit
+  - rank
+  - decile
+  - risk
+  - treated
+  - treatment
+  - coupon
+  - promo
+  - campaign
+  - camp_
+  - mailer
+  - display
+  - discount
+  - redempt
+  - recommend
+  - offer
+  - source
+  - cutoff
+  estimate_cv_metrics: false
