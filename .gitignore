@@ -1,12 +1,3 @@
-# ============================================================
-# DATA
-# ============================================================
-# Raw/processed/intermediate data are usually large and should
-# not be committed unless the team explicitly decides to track them.
-
-Data/Raw/
-Data/Processed/
-Data/Intermediate/
 
 # Keep data instructions
 !Data/README.md
