@@ -584,6 +584,163 @@ def calibrate_prefit_model(
     return out
 
 
+def calibration_flatspot_diagnostics(
+    y_true: Iterable[int],
+    proba: Iterable[float],
+    n_deciles: int = 10,
+    probability_round_decimals: int = 6,
+    large_bucket_warning_threshold: float = 0.20,
+) -> Dict[str, Any]:
+    """Diagnose probability flat spots and decile-ordering weaknesses.
+
+    Brier score alone can favor a calibration method that collapses many
+    customers into the same calibrated probability. That can be acceptable for
+    group-level calibration but harmful for ranking/top-k targeting. This
+    diagnostic is therefore used both for reporting and as a guardrail in the
+    calibration-selection logic.
+    """
+    y = np.asarray(y_true).astype(int)
+    p = np.asarray(proba).astype(float)
+    out: Dict[str, Any] = {
+        "n_customers": int(len(p)),
+        "number_of_unique_calibrated_probabilities": 0,
+        "unique_probability_share": np.nan,
+        "largest_probability_bucket_count": 0,
+        "share_of_customers_in_largest_probability_bucket": np.nan,
+        "largest_probability_bucket_value": np.nan,
+        "flatspot_warning": False,
+        "top_decile_actual_churn_rate": np.nan,
+        "bottom_decile_actual_churn_rate": np.nan,
+        "top_decile_mean_predicted_probability": np.nan,
+        "bottom_decile_mean_predicted_probability": np.nan,
+        "actual_churn_monotonicity_violation_count": 0,
+        "lower_decile_actual_churn_exceeds_top_decile": False,
+        "predicted_top_decile_below_bottom_decile": False,
+        "monotonicity_warning_by_decile": "not_evaluated",
+    }
+    if len(p) == 0:
+        return out
+
+    rounded_p = np.round(p, probability_round_decimals)
+    value_counts = pd.Series(rounded_p).value_counts(dropna=False)
+    unique_count = int(value_counts.shape[0])
+    largest_bucket_count = int(value_counts.iloc[0])
+    largest_bucket_share = float(largest_bucket_count / len(p))
+
+    out.update(
+        {
+            "number_of_unique_calibrated_probabilities": unique_count,
+            "unique_probability_share": float(unique_count / len(p)),
+            "largest_probability_bucket_count": largest_bucket_count,
+            "share_of_customers_in_largest_probability_bucket": largest_bucket_share,
+            "largest_probability_bucket_value": float(value_counts.index[0]),
+            "flatspot_warning": bool(
+                largest_bucket_share >= large_bucket_warning_threshold
+            ),
+        }
+    )
+
+    dec = calibration_by_decile(y, p, n_bins=n_deciles).sort_values(
+        "probability_decile"
+    )
+    if dec.empty:
+        return out
+
+    top_decile = dec[dec["probability_decile"] == 1]
+    bottom_decile = dec[dec["probability_decile"] == n_deciles]
+    top_actual = (
+        float(top_decile["actual_churn_rate"].iloc[0])
+        if not top_decile.empty
+        else np.nan
+    )
+    bottom_actual = (
+        float(bottom_decile["actual_churn_rate"].iloc[0])
+        if not bottom_decile.empty
+        else np.nan
+    )
+    top_pred = (
+        float(top_decile["mean_predicted_probability"].iloc[0])
+        if not top_decile.empty
+        else np.nan
+    )
+    bottom_pred = (
+        float(bottom_decile["mean_predicted_probability"].iloc[0])
+        if not bottom_decile.empty
+        else np.nan
+    )
+
+    # Decile 1 is highest predicted risk. Actual churn rates should generally
+    # decline as decile number increases. With small validation/test samples,
+    # violations are diagnostic warnings rather than automatic proof of failure.
+    actual_rates = dec["actual_churn_rate"].to_numpy(dtype=float)
+    increases_vs_previous = np.diff(actual_rates) > 0
+    violation_count = int(np.sum(increases_vs_previous))
+    lower_decile_exceeds_top = (
+        bool(np.nanmax(actual_rates[1:]) > top_actual)
+        if len(actual_rates) > 1 and not np.isnan(top_actual)
+        else False
+    )
+    predicted_rank_inversion = (
+        bool(top_pred < bottom_pred)
+        if not (np.isnan(top_pred) or np.isnan(bottom_pred))
+        else False
+    )
+
+    warnings: List[str] = []
+    if predicted_rank_inversion:
+        warnings.append("predicted_top_decile_below_bottom_decile")
+    if lower_decile_exceeds_top:
+        warnings.append("lower_decile_actual_churn_exceeds_top_decile")
+    if violation_count > 0:
+        warnings.append(
+            f"actual_churn_not_monotone_{violation_count}_adjacent_increases"
+        )
+    if largest_bucket_share >= large_bucket_warning_threshold:
+        warnings.append("large_probability_flat_spot")
+
+    out.update(
+        {
+            "top_decile_actual_churn_rate": top_actual,
+            "bottom_decile_actual_churn_rate": bottom_actual,
+            "top_decile_mean_predicted_probability": top_pred,
+            "bottom_decile_mean_predicted_probability": bottom_pred,
+            "actual_churn_monotonicity_violation_count": violation_count,
+            "lower_decile_actual_churn_exceeds_top_decile": lower_decile_exceeds_top,
+            "predicted_top_decile_below_bottom_decile": predicted_rank_inversion,
+            "monotonicity_warning_by_decile": "; ".join(warnings)
+            if warnings
+            else "none",
+        }
+    )
+    return out
+
+
+def calibration_guardrail_pass(
+    diag: Dict[str, Any],
+    baseline_churn_rate: float,
+    max_largest_bucket_share: float = 0.30,
+) -> Tuple[bool, str]:
+    """Return whether a calibration candidate is safe enough for champion selection.
+
+    The guardrail intentionally remains conservative: it does not require perfect
+    decile monotonicity because validation has few positives. It blocks candidates
+    that are clearly too flat for ranking or whose top predicted-risk decile is
+    not better than the base churn rate.
+    """
+    reasons: List[str] = []
+    largest_share = diag.get("share_of_customers_in_largest_probability_bucket", np.nan)
+    top_actual = diag.get("top_decile_actual_churn_rate", np.nan)
+
+    if not np.isnan(largest_share) and float(largest_share) > max_largest_bucket_share:
+        reasons.append(
+            f"largest_probability_bucket_share>{max_largest_bucket_share:.2f}"
+        )
+    if not np.isnan(top_actual) and float(top_actual) < float(baseline_churn_rate):
+        reasons.append("top_decile_actual_churn_below_baseline")
+
+    return len(reasons) == 0, "; ".join(reasons) if reasons else "pass"
+
+
 def select_calibrated_churn_model(
     metrics: pd.DataFrame,
     fitted_models: Dict[str, Tuple[Any, List[str]]],
@@ -2212,7 +2369,9 @@ def organize_m5_outputs(paths: Dict[str, Path]) -> None:
     }
     source_dir = paths["models_dir"]
     for target_key, file_names in output_groups.items():
-        target_dir = paths.get(target_key, source_dir / target_key.replace("models_", ""))
+        target_dir = paths.get(
+            target_key, source_dir / target_key.replace("models_", "")
+        )
         target_dir.mkdir(parents=True, exist_ok=True)
         for name in file_names:
             src = source_dir / name
@@ -2221,7 +2380,6 @@ def organize_m5_outputs(paths: Dict[str, Path]) -> None:
                 if dst.exists():
                     dst.unlink()
                 src.rename(dst)
-
 
 
 def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
@@ -2411,10 +2569,18 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
         ),
         "shap_status_file": str(paths["reports_internal_dir"] / "M5_shap_status.json"),
         "outputs_dir": str(paths["models_dir"]),
-        "reports_outputs_dir": str(paths.get("models_reports_dir", paths["models_dir"] / "reports")),
-        "m6_handoff_outputs_dir": str(paths.get("models_m6_handoff_dir", paths["models_dir"] / "m6_handoff")),
-        "diagnostics_outputs_dir": str(paths.get("models_diagnostics_dir", paths["models_dir"] / "diagnostics")),
-        "artifacts_outputs_dir": str(paths.get("models_artifacts_dir", paths["models_dir"] / "artifacts")),
+        "reports_outputs_dir": str(
+            paths.get("models_reports_dir", paths["models_dir"] / "reports")
+        ),
+        "m6_handoff_outputs_dir": str(
+            paths.get("models_m6_handoff_dir", paths["models_dir"] / "m6_handoff")
+        ),
+        "diagnostics_outputs_dir": str(
+            paths.get("models_diagnostics_dir", paths["models_dir"] / "diagnostics")
+        ),
+        "artifacts_outputs_dir": str(
+            paths.get("models_artifacts_dir", paths["models_dir"] / "artifacts")
+        ),
     }
     (paths["reports_internal_dir"] / "m5_pipeline_summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"

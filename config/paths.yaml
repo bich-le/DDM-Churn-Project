@@ -42,8 +42,11 @@ modeling:
   run_xgboost: true
   run_smote_baseline: false
 expected_profit_scenarios:
+  # Named scenarios are used for customer-level columns such as
+  # expected_incremental_profit_base. These are not factual campaign costs;
+  # they are business assumptions until M6 validates treatment lift.
   conservative:
-    gross_margin: 0.2
+    gross_margin: 0.20
     save_rate_given_treatment: 0.03
     treatment_cost: 5.0
   base:
@@ -51,9 +54,33 @@ expected_profit_scenarios:
     save_rate_given_treatment: 0.05
     treatment_cost: 5.0
   optimistic:
-    gross_margin: 0.3
+    gross_margin: 0.30
     save_rate_given_treatment: 0.08
-    treatment_cost: 5.0
+    treatment_cost: 3.0
+
+expected_profit_sensitivity_grid:
+  # Sensitivity grid is used only for scenario_sensitivity_grid.csv.
+  # It does not affect churn-model training, calibration, SHAP, or value modeling.
+  enabled: true
+  gross_margins:
+    - 0.20
+    - 0.25
+    - 0.30
+    - 0.40
+  save_rates:
+    - 0.03
+    - 0.05
+    - 0.08
+    - 0.10
+    - 0.15
+  treatment_costs:
+    - 0.25
+    - 0.50
+    - 1.00
+    - 2.00
+    - 3.00
+    - 5.00
+
 value_modeling:
   prediction_horizon_days: 60
   default_annual_discount_rate: 0.08
