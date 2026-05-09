@@ -1,4 +1,8 @@
 
+# Data folders
+Data/
+data/
+
 # Keep data instructions
 !Data/README.md
 
