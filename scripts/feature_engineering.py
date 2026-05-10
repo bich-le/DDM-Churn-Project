@@ -2,9 +2,6 @@ import pandas as pd
 import numpy as np
 import os
 import warnings
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from imblearn.combine import SMOTETomek
 
 warnings.filterwarnings('ignore')
 
@@ -16,11 +13,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PROCESSED = os.path.join(BASE_DIR, 'Data', 'Processed')
 DATA_RAW = os.path.join(BASE_DIR, 'Data', 'Raw')
 MODELS_DIR = os.path.join(BASE_DIR, 'models')
+PSM_DIR = os.path.join(MODELS_DIR, 'psm_inputs')
 
 def load_and_filter_data():
     """Loads raw/processed datasets and applies strict CUT-OFF filters."""
     print("1. Loading datasets...")
     os.makedirs(MODELS_DIR, exist_ok=True)
+    os.makedirs(PSM_DIR, exist_ok=True)
     
     transactions = pd.read_parquet(os.path.join(DATA_PROCESSED, 'transactions_master.parquet'), engine='pyarrow')
     customer = pd.read_parquet(os.path.join(DATA_PROCESSED, 'customer_base_labeled.parquet'), engine='pyarrow')
@@ -200,86 +199,112 @@ def build_campaign_and_demo(campaign_table, campaign_desc, demographics, obs_txn
     
     return campaign_features, demo_feature[['household_key', 'has_demographic_info']]
 
-def assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_df, primary_store, camp_feats, demo_feat, CUT_OFF_DAY):
-    """Merges features, splits data, scales, applies SMOTE, and exports outputs."""
-    print("5. Assembling Data, Scaling, and Applying SMOTETomek...")
+def assemble_final_dataset(customer_labels, cust_feats, brand_qty, causal_features, 
+                           trend_df, campaign_features, demo_feature, primary_store, CUT_OFF_DAY):
+    """Merges all engineered components into a single comprehensive DataFrame."""
+    print("\n--- STEP 5: ASSEMBLING FINAL DATASET ---")
     
-    # Merge all dataframes
+    # Start with base labels
+    df_final = customer_labels[['household_key', 'churn_flag']].copy()
+    
+    # Merge all feature tables
     df_final = pd.merge(df_final, cust_feats, on='household_key', how='inner')
-    df_final = pd.merge(df_final, brand_feats, on='household_key', how='left')
-    df_final = pd.merge(df_final, causal_feats, on='household_key', how='left')
+    df_final = pd.merge(df_final, brand_qty[['household_key', 'Private_Brand_Ratio']], on='household_key', how='left')
+    df_final = pd.merge(df_final, causal_features, on='household_key', how='left')
     df_final = pd.merge(df_final, trend_df, on='household_key', how='left')
+    df_final = pd.merge(df_final, campaign_features, on='household_key', how='left')
+    df_final = pd.merge(df_final, demo_feature, on='household_key', how='left')
     df_final = pd.merge(df_final, primary_store, on='household_key', how='left')
-    df_final = pd.merge(df_final, camp_feats, on='household_key', how='left')
-    df_final = pd.merge(df_final, demo_feat, on='household_key', how='left')
 
-    # Final imputation
-    df_final['Days_Since_Last_Camp'].fillna(CUT_OFF_DAY, inplace=True)
-    df_final['Primary_Store_ID'].fillna('Unknown', inplace=True)
+    # Handle NaN values globally
+    if 'Days_Since_Last_Camp' in df_final.columns:
+        df_final['Days_Since_Last_Camp'].fillna(CUT_OFF_DAY, inplace=True)
+    if 'Primary_Store_ID' in df_final.columns:
+        df_final['Primary_Store_ID'].fillna('Unknown', inplace=True)
+        
     df_final.fillna(0, inplace=True)
-
-    print(f"   -> Final DataFrame shape (Before SMOTE): {df_final.shape}")
-    df_final.to_csv(os.path.join(MODELS_DIR, 'final_ML_features.csv'), index=False)
-
-    # ML Pipeline Splitting
-    keys = df_final['household_key']
-    stores = df_final['Primary_Store_ID']
-    # Drop categorical features and IDs before scaling
-    X = df_final.drop(columns=['household_key', 'churn_flag', 'Primary_Store_ID'])
-    y = df_final['churn_flag']
+    print(f"Master DataFrame assembled. Shape: {df_final.shape}")
     
-    X_train, X_test, y_train, y_test, keys_train, keys_test, stores_train, stores_test = train_test_split(
-        X, y, keys, stores, test_size=0.2, random_state=42, stratify=y
+    return df_final
+
+def generate_psm_flags(df_final, CUT_OFF_DAY):
+    """Creates Method C (Intensity-based) treatment flags for M6 Causal Inference."""
+    print("\n--- STEP 6: GENERATING TREATMENT FLAGS FOR PSM (METHOD C) ---")
+    
+    psm_flags = pd.DataFrame({'household_key': df_final['household_key'].unique()})
+    
+    # Extract promo_usage_ratio
+    if 'promo_usage_ratio' in df_final.columns:
+        psm_flags = pd.merge(psm_flags, df_final[['household_key', 'promo_usage_ratio']], on='household_key', how='left')
+    else:
+        psm_flags['promo_usage_ratio'] = 0 
+        
+    psm_flags['promo_usage_ratio'].fillna(0, inplace=True)
+    mean_promo_ratio = psm_flags['promo_usage_ratio'].mean()
+    print(f"-> Threshold (Mean Promo Ratio): {mean_promo_ratio:.4f}")
+
+    # Assign treatment flag (1 = Heavy User, 0 = Light/No User)
+    psm_flags['is_treated'] = (psm_flags['promo_usage_ratio'] > mean_promo_ratio).astype(int)
+    
+    # Format treatment source
+    psm_flags['treatment_source'] = psm_flags['is_treated'].apply(
+        lambda x: 'Heavy_Promo_User' if x == 1 else 'Light/No_Promo_User'
     )
-
-    # Airtight Scaling
-    scaler = StandardScaler()
-    X_train_scaled = pd.DataFrame(scaler.fit_transform(X_train), columns=X_train.columns)
-    X_test_scaled = pd.DataFrame(scaler.transform(X_test), columns=X_test.columns)
-
-    # Handle Imbalance
-    smt = SMOTETomek(random_state=42)
-    X_train_resampled, y_train_resampled = smt.fit_resample(X_train_scaled, y_train)
-
-    print("*" * 60)
-    print("NOTICE FOR MODELING TEAM (M5/M6):")
-    print("1. Train set has been processed with SMOTETomek.")
-    print("2. 'Primary_Store_ID' is categorical and re-attached to the files.")
-    print("   Apply Target Encoding using train set distributions if using Linear/NN models.")
-    print("*" * 60)
-
-    # Pack DataFrames
-    train_final_df = pd.concat([X_train_resampled, y_train_resampled.reset_index(drop=True)], axis=1)
-    test_final_df = pd.concat([X_test_scaled, y_test.reset_index(drop=True)], axis=1)
+    psm_flags['treatment_cutoff_day'] = CUT_OFF_DAY
     
-    # Restore ID and Store ID for Test set
-    test_final_df['household_key'] = keys_test.values
-    test_final_df['Primary_Store_ID'] = stores_test.values
-
-    # Restore ID and Store ID for Train set 
-    # (Synthetic rows generated by SMOTE will be given a placeholder tag)
-    train_store_info = pd.DataFrame({
-        'household_key': keys_train.values,
-        'Primary_Store_ID': stores_train.values
-    })
-    train_final_df = pd.concat([train_final_df, train_store_info], axis=1)
-    train_final_df['household_key'].fillna('Synthetic', inplace=True)
-    train_final_df['Primary_Store_ID'].fillna('Synthetic', inplace=True)
-
-    # Export
-    train_final_df.to_parquet(os.path.join(MODELS_DIR, 'final_train_features.parquet'), index=False)
-    test_final_df.to_parquet(os.path.join(MODELS_DIR, 'final_test_features.parquet'), index=False)
+    # Export PSM file
+    psm_export_df = psm_flags[['household_key', 'is_treated', 'treatment_source', 'treatment_cutoff_day']]
+    psm_csv_path = os.path.join(PSM_DIR, 'psm_treatment_flags.csv')
+    psm_export_df.to_csv(psm_csv_path, index=False)
     
-    print(f"\n[SUCCESS] Pipeline Completed! Files exported to '{MODELS_DIR}' directory.")
+    print(f"Exported {len(psm_export_df)} PSM flags to: {psm_csv_path}")
 
+def export_multi_version_features(df_final):
+    """Exports independent datasets tailored for Tree-based and Linear models."""
+    print("\n--- STEP 8: EXPORTING MULTI-VERSION FEATURES ---")
+    
+    # Define structurally flawed features causing perfect multicollinearity
+    linear_drop_cols = [
+        'Total_Campaigns_Received',  # VIF = inf
+        'IPT_mean',                  # Highly correlated (0.95) with IPT_std
+        'IPT_std'                    # We retain IPT_CV to safely represent both
+    ]
+
+    # Create independent DataFrames
+    df_tree = df_final.copy()
+    df_linear = df_final.drop(columns=linear_drop_cols, errors='ignore')
+
+    # Export to CSV (Raw, unscaled versions - M5 handles scaling natively)
+    tree_path = os.path.join(MODELS_DIR, 'final_ML_features_tree.csv')
+    linear_path = os.path.join(MODELS_DIR, 'final_ML_features_linear.csv')
+
+    df_tree.to_csv(tree_path, index=False)
+    df_linear.to_csv(linear_path, index=False)
+
+    print(f"Version A (Tree-based) saved: {tree_path} | Shape: {df_tree.shape}")
+    print(f"Version B (Linear) saved:     {linear_path} | Shape: {df_linear.shape}")
+    
 def run_pipeline():
-    obs_txns, causal_obs, demographics, product, campaign_table, campaign_desc, df_final, CUT_OFF_DAY = load_and_filter_data()
+    obs_txns, causal_obs, demographics, product, campaign_table, campaign_desc, customer_labels, CUT_OFF_DAY = load_and_filter_data()
     
     cust_feats = build_rfm_and_behavior(obs_txns, CUT_OFF_DAY)
     brand_feats, causal_feats, trend_df, primary_store = build_marketing_and_trend(obs_txns, causal_obs, product, CUT_OFF_DAY)
     camp_feats, demo_feat = build_campaign_and_demo(campaign_table, campaign_desc, demographics, obs_txns, CUT_OFF_DAY)
     
-    assemble_and_export(df_final, cust_feats, brand_feats, causal_feats, trend_df, primary_store, camp_feats, demo_feat, CUT_OFF_DAY)
+    df_final = assemble_final_dataset(
+        customer_labels=customer_labels, 
+        cust_feats=cust_feats, 
+        brand_qty=brand_feats, 
+        causal_features=causal_feats, 
+        trend_df=trend_df, 
+        campaign_features=camp_feats, 
+        demo_feature=demo_feat, 
+        primary_store=primary_store, 
+        CUT_OFF_DAY=CUT_OFF_DAY
+    )
+    
+    generate_psm_flags(df_final, CUT_OFF_DAY)
+    export_multi_version_features(df_final)
 
 if __name__ == "__main__":
     run_pipeline()
