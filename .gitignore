@@ -73,3 +73,5 @@ imblearn/
 #
 # If the team later decides not to push customer-level or binary files,
 # add explicit ignore rules for models/m6_handoff/ and models/artifacts/.
+models/diagnostics/
+models/reports/
