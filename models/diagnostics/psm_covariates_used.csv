@@ -1,0 +1,17 @@
+covariate,dtype
+Frequency,int64
+Monetary,float64
+Basket_Value_Std,float64
+customer_lifetime,int64
+Recency_Capped,int64
+Inactive_Days_Ratio,float64
+active_weeks_ratio,float64
+Avg_Items_Per_Basket,float64
+IPT_mean,float64
+IPT_std,float64
+IPT_CV,float64
+Private_Brand_Ratio,float64
+Rolling_Freq_Slope,float64
+Days_Since_Last_Camp,float64
+has_demographic_info,int64
+Primary_Store_ID,int64
