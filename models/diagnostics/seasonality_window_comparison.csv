@@ -1,4 +1,0 @@
-window,start_day,end_day,total_sales,txn_count,active_households,avg_sales_per_active_household,sales_index_vs_recent_pre_cutoff
-pre_cutoff_recent_60d,591,650,731848.625,242381,2239,326.8640441894531,1.0
-pre_cutoff_previous_60d,531,590,671231.75,229944,2217,302.7657775878906,0.9171729331321761
-prediction_window_60d,651,711,739887.3125,251394,2235,331.0457763671875,1.0109840849943525
