@@ -1,3 +1,0 @@
-household_key,is_treated,treatment_source,treatment_cutoff_day
-1001,1,coupon_or_mailer_before_cutoff,651
-1002,0,no_coupon_or_mailer_before_cutoff,651

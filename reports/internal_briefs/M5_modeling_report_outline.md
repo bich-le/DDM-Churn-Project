@@ -19,22 +19,22 @@ M5 receives M4's delivered feature table and builds a risk/value/profit ranking 
 - SHAP outputs are used for model explainability, but they are predictive explanations, not causal claims.
 
 ## Churn model
-- Selected reporting model: **XGBoost weighted**
-- Calibration selected: **sigmoid**
-- Threshold on calibrated probability: **0.13**
-- Test PR-AUC: **0.3652**
-- Test F2-score: **0.4583**
-- Test Brier score: **0.0951**
-- Test mean predicted probability: **0.1214** vs actual churn rate **0.1200**
+- Selected reporting model: **Logistic Regression balanced**
+- Calibration selected: **isotonic**
+- Threshold on calibrated probability: **0.07**
+- Test PR-AUC: **0.3185**
+- Test F2-score: **0.4721**
+- Test Brier score: **0.0933**
+- Test mean predicted probability: **0.1213** vs actual churn rate **0.1200**
 
 The selected model should be interpreted as the reporting/champion model for calibrated decision support, not as proof that it is statistically superior to every alternative. With a small sample size and unstable positive-class counts, differences across candidate models may fall within split-level variance.
 
 ## Two-part discounted value model
 - Future-active model: **Active Random Forest (isotonic)**
-- Active-model test Brier score: **0.0709**
+- Active-model test Brier score: **0.0715**
 - Conditional value model: **Random Forest Regressor**
 - Conditional value target: **log1p(discounted_future_revenue_60d | future_active=1)**
-- Test RMSE_log: **0.8861**
+- Test RMSE_log: **0.8851**
 
 ## Expected incremental profit and candidate ranking
 `Expected Incremental Profit_i = p_churn_calibrated_i × save_rate_given_treatment × predicted_discounted_value_60d_if_active_i × gross_margin - treatment_cost_i`
@@ -44,11 +44,11 @@ The profit formula intentionally uses `predicted_discounted_value_60d_if_active`
 If no customers have positive expected profit under the base scenario, `priority_rank` falls back to churn-risk ranking for A/B test candidate selection. In that case, profit ranking should not be interpreted as treatment eligibility; it is only a scenario diagnostic.
 
 ## SHAP top drivers
-- Inactive_Days_Ratio
 - Recency_Capped
-- IPT_std
-- Avg_Items_Per_Basket
-- IPT_mean
+- Inactive_Days_Ratio
+- Camp_Count_TypeA
+- Campaigns_Last_30D
+- Mailer_Responsiveness
 
 ## Important limitations
 - M5 uses M4's current feature table as-is. A separate M4 feature lineage audit is still recommended.

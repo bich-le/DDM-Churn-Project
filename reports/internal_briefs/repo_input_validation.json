@@ -2,7 +2,7 @@
   "feature_table_csv": {
     "path": "C:\\Users\\Thuww\\DDM-Churn-Project\\models\\final_ML_features.csv",
     "exists": true,
-    "size_bytes": 693945
+    "size_bytes": 696521
   },
   "transaction_master_parquet": {
     "path": "C:\\Users\\Thuww\\DDM-Churn-Project\\Data\\Processed\\transactions_master.parquet",
