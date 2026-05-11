@@ -1,6 +1,0 @@
-{
-  "status": "completed",
-  "sample_size": 500,
-  "top_risk_customers": 30,
-  "note": "SHAP values explain model prediction associations, not causality."
-}
