@@ -1,4 +1,4 @@
-# DDM-Churn-Project
+# Dunnhumby Customer Churn Project
 A data-driven churn prediction and retention optimization project using machine learning, market basket analysis, and PSM testing.
 
 ## Introduction
