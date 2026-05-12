@@ -33,7 +33,9 @@ def make_one_hot_encoder() -> OneHotEncoder:
         return OneHotEncoder(handle_unknown="ignore", sparse=False)
 
 
-def best_fbeta_threshold(y_true: Iterable[int], proba: Iterable[float], beta: float = 2.0) -> Tuple[float, float]:
+def best_fbeta_threshold(
+    y_true: Iterable[int], proba: Iterable[float], beta: float = 2.0
+) -> Tuple[float, float]:
     """Search for the threshold that maximizes F-beta on validation data."""
     y_true = np.asarray(y_true)
     proba = np.asarray(proba)
@@ -46,7 +48,9 @@ def best_fbeta_threshold(y_true: Iterable[int], proba: Iterable[float], beta: fl
     return max(rows, key=lambda x: x[1])
 
 
-def evaluate_proba(y_true: Iterable[int], proba: Iterable[float], threshold: float, beta: float = 2.0) -> Dict[str, Any]:
+def evaluate_proba(
+    y_true: Iterable[int], proba: Iterable[float], threshold: float, beta: float = 2.0
+) -> Dict[str, Any]:
     """Evaluate binary-class probabilities at a chosen classification threshold."""
     y_true = np.asarray(y_true).astype(int)
     proba = np.asarray(proba).astype(float)
@@ -73,15 +77,28 @@ def evaluate_proba(y_true: Iterable[int], proba: Iterable[float], threshold: flo
     return metrics
 
 
-def evaluate_classifier(model: Any, X_eval: pd.DataFrame, y_eval: pd.Series, threshold: float, beta: float = 2.0) -> Dict[str, Any]:
+def evaluate_classifier(
+    model: Any,
+    X_eval: pd.DataFrame,
+    y_eval: pd.Series,
+    threshold: float,
+    beta: float = 2.0,
+) -> Dict[str, Any]:
     """Evaluate a fitted probabilistic binary classifier at a chosen threshold."""
     proba = model.predict_proba(X_eval)[:, 1]
     return evaluate_proba(y_eval, proba, threshold=threshold, beta=beta)
 
 
-def calibration_by_decile(y_true: Iterable[int], proba: Iterable[float], n_bins: int = 10) -> pd.DataFrame:
+def calibration_by_decile(
+    y_true: Iterable[int], proba: Iterable[float], n_bins: int = 10
+) -> pd.DataFrame:
     """Return a decile-level reliability table for predicted probabilities."""
-    df = pd.DataFrame({"y_true": np.asarray(y_true).astype(int), "proba": np.asarray(proba).astype(float)})
+    df = pd.DataFrame(
+        {
+            "y_true": np.asarray(y_true).astype(int),
+            "proba": np.asarray(proba).astype(float),
+        }
+    )
     # qcut can fail when many probabilities tie; rank first for stable equal-sized bins.
     df["probability_decile"] = pd.qcut(
         df["proba"].rank(method="first"),
@@ -99,7 +116,9 @@ def calibration_by_decile(y_true: Iterable[int], proba: Iterable[float], n_bins:
         .reset_index()
         .sort_values("probability_decile")
     )
-    out["calibration_gap"] = out["mean_predicted_probability"] - out["actual_churn_rate"]
+    out["calibration_gap"] = (
+        out["mean_predicted_probability"] - out["actual_churn_rate"]
+    )
     return out
 
 
@@ -115,7 +134,12 @@ def ranking_decile_performance(
     designed for business review: it shows whether the top-scored customers
     actually churn at a meaningfully higher rate than the baseline churn rate.
     """
-    df = pd.DataFrame({"y_true": np.asarray(y_true).astype(int), score_name: np.asarray(score).astype(float)})
+    df = pd.DataFrame(
+        {
+            "y_true": np.asarray(y_true).astype(int),
+            score_name: np.asarray(score).astype(float),
+        }
+    )
     if df.empty:
         return pd.DataFrame()
     baseline = float(df["y_true"].mean())
@@ -155,7 +179,12 @@ def top_k_precision_summary(
     score_name: str = "score",
 ) -> pd.DataFrame:
     """Return Precision@K, Recall@K, and Lift@K for top-scored customers."""
-    df = pd.DataFrame({"y_true": np.asarray(y_true).astype(int), score_name: np.asarray(score).astype(float)})
+    df = pd.DataFrame(
+        {
+            "y_true": np.asarray(y_true).astype(int),
+            score_name: np.asarray(score).astype(float),
+        }
+    )
     if df.empty:
         return pd.DataFrame()
     df = df.sort_values(score_name, ascending=False).reset_index(drop=True)
@@ -214,33 +243,62 @@ def profit_threshold_analysis(
         selections = [("profit_positive", positive)]
         for share in top_k_shares:
             n = min(max(int(np.ceil(n_total * float(share))), 1), n_total)
-            selections.append((f"top_{int(float(share) * 100)}pct_by_expected_profit", ordered.head(n)))
+            selections.append(
+                (
+                    f"top_{int(float(share) * 100)}pct_by_expected_profit",
+                    ordered.head(n),
+                )
+            )
         for rule, selected in selections:
             selected_count = len(selected)
-            selected_churn_rate = float(selected[y_col].mean()) if selected_count and y_col in selected else np.nan
+            selected_churn_rate = (
+                float(selected[y_col].mean())
+                if selected_count and y_col in selected
+                else np.nan
+            )
             rows.append(
                 {
                     "scenario": scenario,
                     "expected_profit_column": col,
                     "selection_rule": rule,
                     "selected_customer_count": int(selected_count),
-                    "selected_customer_share": float(selected_count / n_total) if n_total else np.nan,
+                    "selected_customer_share": float(selected_count / n_total)
+                    if n_total
+                    else np.nan,
                     "baseline_churn_rate": baseline,
                     "selected_churn_rate": selected_churn_rate,
-                    "lift_vs_baseline": selected_churn_rate / baseline if baseline and not np.isnan(selected_churn_rate) else np.nan,
-                    "total_expected_incremental_profit": float(selected[col].sum()) if selected_count else 0.0,
-                    "mean_expected_incremental_profit": float(selected[col].mean()) if selected_count else np.nan,
-                    "min_expected_incremental_profit": float(selected[col].min()) if selected_count else np.nan,
-                    "max_expected_incremental_profit": float(selected[col].max()) if selected_count else np.nan,
-                    "min_p_churn_calibrated": float(selected[p_col].min()) if selected_count and p_col in selected else np.nan,
-                    "mean_p_churn_calibrated": float(selected[p_col].mean()) if selected_count and p_col in selected else np.nan,
-                    "max_p_churn_calibrated": float(selected[p_col].max()) if selected_count and p_col in selected else np.nan,
+                    "lift_vs_baseline": selected_churn_rate / baseline
+                    if baseline and not np.isnan(selected_churn_rate)
+                    else np.nan,
+                    "total_expected_incremental_profit": float(selected[col].sum())
+                    if selected_count
+                    else 0.0,
+                    "mean_expected_incremental_profit": float(selected[col].mean())
+                    if selected_count
+                    else np.nan,
+                    "min_expected_incremental_profit": float(selected[col].min())
+                    if selected_count
+                    else np.nan,
+                    "max_expected_incremental_profit": float(selected[col].max())
+                    if selected_count
+                    else np.nan,
+                    "min_p_churn_calibrated": float(selected[p_col].min())
+                    if selected_count and p_col in selected
+                    else np.nan,
+                    "mean_p_churn_calibrated": float(selected[p_col].mean())
+                    if selected_count and p_col in selected
+                    else np.nan,
+                    "max_p_churn_calibrated": float(selected[p_col].max())
+                    if selected_count and p_col in selected
+                    else np.nan,
                 }
             )
     return pd.DataFrame(rows)
 
 
-def regression_metrics(y_true_log: Iterable[float], pred_log: Iterable[float], prefix: str) -> Dict[str, float]:
+def regression_metrics(
+    y_true_log: Iterable[float], pred_log: Iterable[float], prefix: str
+) -> Dict[str, float]:
     """Evaluate log-revenue regression and revenue-scale MAE."""
     y_true_log = np.asarray(y_true_log)
     pred_log = np.maximum(np.asarray(pred_log), 0)
@@ -255,20 +313,32 @@ def regression_metrics(y_true_log: Iterable[float], pred_log: Iterable[float], p
         f"{prefix}_RMSE_log": float(np.sqrt(mean_squared_error(y_true_log, pred_log))),
         f"{prefix}_MAE_log": float(mean_absolute_error(y_true_log, pred_log)),
         f"{prefix}_R2_log": float(r2_score(y_true_log, pred_log)),
-        f"{prefix}_MAE_revenue": float(mean_absolute_error(np.expm1(y_true_log), np.expm1(pred_log))),
+        f"{prefix}_MAE_revenue": float(
+            mean_absolute_error(np.expm1(y_true_log), np.expm1(pred_log))
+        ),
     }
 
 
-def get_feature_names_from_pipeline(pipeline: Any, original_columns: List[str]) -> List[str]:
-    """Best-effort extraction of transformed feature names from a sklearn pipeline."""
+def get_feature_names_from_pipeline(
+    pipeline: Any, original_columns: List[str]
+) -> List[str]:
     if not hasattr(pipeline, "named_steps") or "preprocess" not in pipeline.named_steps:
         return original_columns
     preprocess = pipeline.named_steps["preprocess"]
     try:
-        names = preprocess.get_feature_names_out()
-        return [str(x) for x in names]
+        names = [str(x) for x in preprocess.get_feature_names_out()]
     except Exception:
-        return original_columns
+        names = list(original_columns)
+    selector = (
+        pipeline.named_steps.get("selector")
+        if hasattr(pipeline, "named_steps")
+        else None
+    )
+    if selector is not None and hasattr(selector, "support_"):
+        support = np.asarray(selector.support_).astype(bool)
+        if len(support) == len(names):
+            names = [name for name, keep in zip(names, support) if keep]
+    return names
 
 
 def extract_feature_importance(model: Any, original_columns: List[str]) -> pd.DataFrame:

@@ -5,7 +5,7 @@ Run from the project root:
 
 Scope:
 - M5-only changes. This script does not rebuild or modify M4 feature engineering.
-- Uses M4's delivered feature table as input.
+- Uses M4's delivered linear/tree feature tables as input.
 - Adds discounted 60-day value labels from post-cutoff transactions.
 - Uses a two-part value model: P(future active) × E(discounted value | active).
 - Uses calibrated churn probability for business decisioning.
@@ -39,7 +39,11 @@ from sklearn.ensemble import (
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
-from sklearn.model_selection import ParameterSampler, StratifiedKFold, train_test_split
+from sklearn.model_selection import (
+    ParameterSampler,
+    StratifiedKFold,
+    train_test_split,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -136,6 +140,45 @@ def load_feature_table(
         if col in features.columns:
             features[col] = features[col].astype(str)
     return features.drop_duplicates(id_col).reset_index(drop=True)
+
+
+def align_dual_feature_tables(
+    linear_features: pd.DataFrame,
+    tree_features: pd.DataFrame,
+    id_col: str,
+    target_col: str,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Align linear/tree feature tables to the same households and target labels."""
+    linear = linear_features.copy()
+    tree = tree_features.copy()
+    linear[id_col] = linear[id_col].astype(int)
+    tree[id_col] = tree[id_col].astype(int)
+
+    common_ids = sorted(set(linear[id_col]).intersection(set(tree[id_col])))
+    if not common_ids:
+        raise ValueError(
+            "No overlapping households between linear/tree feature tables."
+        )
+
+    linear = linear[linear[id_col].isin(common_ids)].copy()
+    tree = tree[tree[id_col].isin(common_ids)].copy()
+    linear = linear.sort_values(id_col).drop_duplicates(id_col).reset_index(drop=True)
+    tree = tree.sort_values(id_col).drop_duplicates(id_col).reset_index(drop=True)
+
+    check = linear[[id_col, target_col]].merge(
+        tree[[id_col, target_col]],
+        on=id_col,
+        how="inner",
+        suffixes=("_linear", "_tree"),
+    )
+    mismatch = check[check[f"{target_col}_linear"] != check[f"{target_col}_tree"]]
+    if not mismatch.empty:
+        raise ValueError(
+            "Target mismatch between linear/tree feature tables for "
+            f"{len(mismatch)} households."
+        )
+
+    return linear, tree
 
 
 def audit_inputs(
@@ -238,6 +281,64 @@ def prepare_splits(
     }
 
 
+def prepare_dual_source_splits(
+    linear_features: pd.DataFrame,
+    tree_features: pd.DataFrame,
+    id_col: str,
+    target_col: str,
+    linear_feature_cols: List[str],
+    tree_feature_cols: List[str],
+    test_size: float,
+    validation_size: float,
+    random_state: int,
+) -> Dict[str, Any]:
+    """Create consistent train/val/test splits for linear and tree feature sources."""
+    ids = linear_features[id_col].astype(int).copy()
+    y = linear_features[target_col].astype(int).copy()
+
+    ids_trainval, ids_test, y_trainval, y_test = train_test_split(
+        ids, y, test_size=test_size, stratify=y, random_state=random_state
+    )
+    ids_train, ids_val, y_train, y_val = train_test_split(
+        ids_trainval,
+        y_trainval,
+        test_size=validation_size,
+        stratify=y_trainval,
+        random_state=random_state,
+    )
+
+    linear_indexed = linear_features.set_index(id_col)
+    tree_indexed = tree_features.set_index(id_col)
+
+    def _take(
+        indexed: pd.DataFrame, cols: List[str], part_ids: pd.Series
+    ) -> pd.DataFrame:
+        return indexed.loc[part_ids.to_numpy(), cols].reset_index(drop=True)
+
+    return {
+        "X": _take(linear_indexed, linear_feature_cols, ids),
+        "X_linear": _take(linear_indexed, linear_feature_cols, ids),
+        "X_tree": _take(tree_indexed, tree_feature_cols, ids),
+        "y": y.reset_index(drop=True),
+        "ids": ids.reset_index(drop=True),
+        "X_train": _take(linear_indexed, linear_feature_cols, ids_train),
+        "X_val": _take(linear_indexed, linear_feature_cols, ids_val),
+        "X_test": _take(linear_indexed, linear_feature_cols, ids_test),
+        "X_train_linear": _take(linear_indexed, linear_feature_cols, ids_train),
+        "X_val_linear": _take(linear_indexed, linear_feature_cols, ids_val),
+        "X_test_linear": _take(linear_indexed, linear_feature_cols, ids_test),
+        "X_train_tree": _take(tree_indexed, tree_feature_cols, ids_train),
+        "X_val_tree": _take(tree_indexed, tree_feature_cols, ids_val),
+        "X_test_tree": _take(tree_indexed, tree_feature_cols, ids_test),
+        "y_train": y_train.reset_index(drop=True),
+        "y_val": y_val.reset_index(drop=True),
+        "y_test": y_test.reset_index(drop=True),
+        "ids_train": ids_train.reset_index(drop=True),
+        "ids_val": ids_val.reset_index(drop=True),
+        "ids_test": ids_test.reset_index(drop=True),
+    }
+
+
 def build_preprocessors(
     num_cols: List[str], cat_cols: List[str]
 ) -> Tuple[ColumnTransformer, ColumnTransformer]:
@@ -257,17 +358,40 @@ def build_preprocessors(
     return linear, tree
 
 
+def get_preprocessed_feature_names(preprocess: ColumnTransformer) -> List[str]:
+    """Return feature names after preprocessing."""
+    try:
+        return list(preprocess.get_feature_names_out())
+    except Exception:
+        names: List[str] = []
+        for name, transformer, cols in preprocess.transformers_:
+            if name == "remainder" or transformer == "drop":
+                continue
+            if transformer == "passthrough":
+                names.extend(list(cols))
+            elif hasattr(transformer, "get_feature_names_out"):
+                try:
+                    names.extend(list(transformer.get_feature_names_out(cols)))
+                except Exception:
+                    names.extend(list(cols))
+            else:
+                names.extend(list(cols))
+        return names
+
+
 def build_classifier_specs(
     linear_preprocess: ColumnTransformer,
     tree_preprocess: ColumnTransformer,
-    feature_cols: List[str],
+    linear_feature_cols: List[str],
+    tree_feature_cols: List[str],
     scale_pos_weight: float,
     random_state: int,
     n_jobs: int,
     run_xgboost: bool,
     run_tree_baselines: bool = True,
-) -> List[Tuple[str, Any, Dict[str, List[Any]], List[str]]]:
-    specs: List[Tuple[str, Any, Dict[str, List[Any]], List[str]]] = [
+    cv_folds: int = 5,
+) -> List[Tuple[str, Any, Dict[str, List[Any]], List[str], str]]:
+    specs: List[Tuple[str, Any, Dict[str, List[Any]], List[str], str]] = [
         (
             "Logistic Regression balanced",
             Pipeline(
@@ -285,7 +409,8 @@ def build_classifier_specs(
                 ]
             ),
             {"model__C": [0.005, 0.01, 0.03, 0.05, 0.1, 0.3, 0.5, 1.0, 2.0, 3.0]},
-            feature_cols,
+            linear_feature_cols,
+            "linear",
         ),
     ]
     if run_tree_baselines:
@@ -312,7 +437,8 @@ def build_classifier_specs(
                         "model__min_samples_leaf": [1, 3, 5],
                         "model__max_features": ["sqrt", "log2", None],
                     },
-                    feature_cols,
+                    tree_feature_cols,
+                    "tree",
                 ),
                 (
                     "Extra Trees balanced",
@@ -335,7 +461,8 @@ def build_classifier_specs(
                         "model__min_samples_leaf": [1, 3, 5],
                         "model__max_features": ["sqrt", "log2", None],
                     },
-                    feature_cols,
+                    tree_feature_cols,
+                    "tree",
                 ),
             ]
         )
@@ -375,7 +502,8 @@ def build_classifier_specs(
                         "model__reg_lambda": [1.0, 3.0, 5.0, 10.0],
                         "model__min_child_weight": [1, 3, 5],
                     },
-                    feature_cols,
+                    tree_feature_cols,
+                    "tree",
                 )
             )
         except Exception as exc:
@@ -407,7 +535,7 @@ def build_smote_baseline(
 
 
 def tune_and_benchmark_classifiers(
-    specs: List[Tuple[str, Any, Dict[str, List[Any]], List[str]]],
+    specs: List[Tuple[str, Any, Dict[str, List[Any]], List[str], str]],
     split: Dict[str, Any],
     f_beta: float,
     output_dir: Path,
@@ -415,10 +543,10 @@ def tune_and_benchmark_classifiers(
     cv_folds: int,
     tuning_n_iter: int,
     smote_baseline: Tuple[str, Any, List[str]] | None = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Tuple[Any, List[str]]]]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Tuple[Any, List[str], str]]]:
     results: List[Dict[str, Any]] = []
     tuning_rows: List[Dict[str, Any]] = []
-    fitted_models: Dict[str, Tuple[Any, List[str]]] = {}
+    fitted_models: Dict[str, Tuple[Any, List[str], str]] = {}
 
     dummy = DummyClassifier(strategy="prior", random_state=random_state)
     dummy.fit(split["X_train"], split["y_train"])
@@ -443,12 +571,12 @@ def tune_and_benchmark_classifiers(
     ).items():
         row[f"test_{key}"] = value
     results.append(row)
-    fitted_models["Dummy prior"] = (dummy, list(split["X"].columns))
+    fitted_models["Dummy prior"] = (dummy, list(split["X_linear"].columns), "linear")
 
     cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=random_state)
-    for name, estimator, param_distributions, cols in specs:
+    for name, estimator, param_distributions, cols, feature_source in specs:
         print(f"[M5] Tuning classifier: {name}")
-        X_train = split["X_train"][cols].reset_index(drop=True)
+        X_train = split[f"X_train_{feature_source}"][cols].reset_index(drop=True)
         y_train = split["y_train"].reset_index(drop=True)
         if param_distributions:
             params_list = list(
@@ -487,8 +615,11 @@ def tune_and_benchmark_classifiers(
             tuned_flag = False
         best_model = clone(estimator)
         best_model.set_params(**best_params)
-        best_model.fit(split["X_train"][cols], split["y_train"])
-        fitted_models[name] = (best_model, cols)
+        best_model.fit(split[f"X_train_{feature_source}"][cols], split["y_train"])
+        fitted_models[name] = (best_model, cols, feature_source)
+
+        # RFECV pipelines removed; no selector export required.
+
         for rank, (mean_score, std_score, params) in enumerate(scored, start=1):
             tuning_rows.append(
                 {
@@ -499,12 +630,14 @@ def tune_and_benchmark_classifiers(
                     "params": json.dumps(params, sort_keys=True),
                 }
             )
-        val_proba = best_model.predict_proba(split["X_val"][cols])[:, 1]
+        val_proba = best_model.predict_proba(split[f"X_val_{feature_source}"][cols])[
+            :, 1
+        ]
         threshold, _ = best_fbeta_threshold(split["y_val"], val_proba, beta=f_beta)
         result: Dict[str, Any] = {
             "model": name,
             "tuned": tuned_flag,
-            "features_used": "numeric+categorical",
+            "features_used": feature_source,
             "best_cv_PR_AUC": best_mean,
             "best_cv_PR_AUC_std": best_std,
             "best_params": json.dumps(best_params, sort_keys=True),
@@ -515,7 +648,7 @@ def tune_and_benchmark_classifiers(
             result[f"val_{key}"] = value
         for key, value in evaluate_proba(
             split["y_test"],
-            best_model.predict_proba(split["X_test"][cols])[:, 1],
+            best_model.predict_proba(split[f"X_test_{feature_source}"][cols])[:, 1],
             threshold,
             beta=f_beta,
         ).items():
@@ -525,9 +658,9 @@ def tune_and_benchmark_classifiers(
     if smote_baseline is not None:
         name, estimator, cols = smote_baseline
         print(f"[M5] Fitting optional classifier: {name}")
-        estimator.fit(split["X_train"][cols], split["y_train"])
-        fitted_models[name] = (estimator, cols)
-        val_proba = estimator.predict_proba(split["X_val"][cols])[:, 1]
+        estimator.fit(split["X_train_linear"][cols], split["y_train"])
+        fitted_models[name] = (estimator, cols, "linear")
+        val_proba = estimator.predict_proba(split["X_val_linear"][cols])[:, 1]
         threshold, _ = best_fbeta_threshold(split["y_val"], val_proba, beta=f_beta)
         result = {
             "model": name,
@@ -542,7 +675,7 @@ def tune_and_benchmark_classifiers(
             result[f"val_{key}"] = value
         for key, value in evaluate_proba(
             split["y_test"],
-            estimator.predict_proba(split["X_test"][cols])[:, 1],
+            estimator.predict_proba(split["X_test_linear"][cols])[:, 1],
             threshold,
             beta=f_beta,
         ).items():
@@ -743,21 +876,21 @@ def calibration_guardrail_pass(
 
 def select_calibrated_churn_model(
     metrics: pd.DataFrame,
-    fitted_models: Dict[str, Tuple[Any, List[str]]],
+    fitted_models: Dict[str, Tuple[Any, List[str], str]],
     split: Dict[str, Any],
     output_dir: Path,
     f_beta: float,
-) -> Tuple[str, str, float, Any, List[str], pd.DataFrame]:
+) -> Tuple[str, str, float, Any, List[str], str, pd.DataFrame]:
     eligible = metrics[metrics["model"] != "Dummy prior"].copy()
     champion_name = str(eligible.iloc[0]["model"])
-    base_model, cols = fitted_models[champion_name]
+    base_model, cols, feature_source = fitted_models[champion_name]
     candidates = calibrate_prefit_model(
-        base_model, split["X_val"][cols], split["y_val"]
+        base_model, split[f"X_val_{feature_source}"][cols], split["y_val"]
     )
     rows: List[Dict[str, Any]] = []
     for method, model in candidates.items():
-        val_p = model.predict_proba(split["X_val"][cols])[:, 1]
-        test_p = model.predict_proba(split["X_test"][cols])[:, 1]
+        val_p = model.predict_proba(split[f"X_val_{feature_source}"][cols])[:, 1]
+        test_p = model.predict_proba(split[f"X_test_{feature_source}"][cols])[:, 1]
         threshold, _ = best_fbeta_threshold(split["y_val"], val_p, beta=f_beta)
         row: Dict[str, Any] = {
             "champion_model": champion_name,
@@ -813,17 +946,27 @@ def select_calibrated_churn_model(
     )
 
     val_dec = calibration_by_decile(
-        split["y_val"], selected_model.predict_proba(split["X_val"][cols])[:, 1]
+        split["y_val"],
+        selected_model.predict_proba(split[f"X_val_{feature_source}"][cols])[:, 1],
     )
     val_dec.insert(0, "dataset", "validation")
     test_dec = calibration_by_decile(
-        split["y_test"], selected_model.predict_proba(split["X_test"][cols])[:, 1]
+        split["y_test"],
+        selected_model.predict_proba(split[f"X_test_{feature_source}"][cols])[:, 1],
     )
     test_dec.insert(0, "dataset", "test")
     dec = pd.concat([val_dec, test_dec], ignore_index=True)
     dec.insert(0, "calibration_method", selected_method)
     dec.to_csv(output_dir / "calibration_by_decile.csv", index=False)
-    return champion_name, selected_method, threshold, selected_model, cols, cal_summary
+    return (
+        champion_name,
+        selected_method,
+        threshold,
+        selected_model,
+        cols,
+        feature_source,
+        cal_summary,
+    )
 
 
 def feature_business_interpretation(feature: str) -> str:
@@ -917,13 +1060,15 @@ def build_value_regressor_specs(
     n_jobs: int,
     run_tree: bool,
     run_xgboost: bool,
-) -> List[Tuple[str, Any]]:
-    specs: List[Tuple[str, Any]] = [
+) -> List[Tuple[str, Any, str]]:
+    """Build value-regression candidates with explicit feature source routing."""
+    specs: List[Tuple[str, Any, str]] = [
         (
             "Ridge Regression",
             Pipeline(
                 [("preprocess", clone(linear_preprocess)), ("model", Ridge(alpha=1.0))]
             ),
+            "linear",
         )
     ]
     if run_tree:
@@ -944,6 +1089,7 @@ def build_value_regressor_specs(
                         ),
                     ]
                 ),
+                "tree",
             )
         )
     if run_xgboost:
@@ -974,6 +1120,7 @@ def build_value_regressor_specs(
                             ),
                         ]
                     ),
+                    "tree",
                 )
             )
         except Exception as exc:
@@ -982,9 +1129,11 @@ def build_value_regressor_specs(
 
 
 def train_two_part_value_model(
-    labels: pd.DataFrame,
+    labels_linear: pd.DataFrame,
+    labels_tree: pd.DataFrame,
     split: Dict[str, Any],
-    feature_cols: List[str],
+    linear_feature_cols: List[str],
+    tree_feature_cols: List[str],
     linear_preprocess: ColumnTransformer,
     tree_preprocess: ColumnTransformer,
     output_dir: Path,
@@ -995,16 +1144,44 @@ def train_two_part_value_model(
     n_jobs: int,
     run_tree_value_models: bool,
     run_xgboost: bool,
-) -> Tuple[pd.DataFrame, pd.DataFrame, Any, str, Any, str]:
+) -> Tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    Any,
+    str,
+    str,
+    List[str],
+    Any,
+    str,
+    str,
+    List[str],
+]:
+    """Train two-part value models with separate linear/tree feature sources.
+
+    Linear models consume the reduced-collinearity linear table. Tree models consume
+    the full tree table. The train/validation/test household split remains shared.
+    """
     id_sets = {
         name: set(split[f"ids_{name}"].astype(int)) for name in ["train", "val", "test"]
     }
-    train = labels[labels[id_col].isin(id_sets["train"])].copy()
-    val = labels[labels[id_col].isin(id_sets["val"])].copy()
-    test = labels[labels[id_col].isin(id_sets["test"])].copy()
+    labels_by_source = {
+        "linear": labels_linear,
+        "tree": labels_tree,
+    }
+    feature_cols_by_source = {
+        "linear": linear_feature_cols,
+        "tree": tree_feature_cols,
+    }
+
+    def _parts(source: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        data = labels_by_source[source]
+        train = data[data[id_col].isin(id_sets["train"])].copy()
+        val = data[data[id_col].isin(id_sets["val"])].copy()
+        test = data[data[id_col].isin(id_sets["test"])].copy()
+        return train, val, test
 
     # Part 1: probability of future activity.
-    active_candidates: List[Tuple[str, Any]] = [
+    active_candidates: List[Tuple[str, Any, str, List[str]]] = [
         (
             "Active Logistic Regression",
             Pipeline(
@@ -1018,6 +1195,8 @@ def train_two_part_value_model(
                     ),
                 ]
             ),
+            "linear",
+            linear_feature_cols,
         ),
     ]
     if run_tree_value_models:
@@ -1038,26 +1217,34 @@ def train_two_part_value_model(
                         ),
                     ]
                 ),
+                "tree",
+                tree_feature_cols,
             )
         )
+
     active_rows: List[Dict[str, Any]] = []
-    active_models: Dict[str, Any] = {}
-    for name, model in active_candidates:
-        print(f"[M5] Fitting future-active model: {name}")
-        model.fit(train[feature_cols], train["future_active_flag"])
+    active_models: Dict[str, Tuple[Any, str, List[str]]] = {}
+    for name, model, feature_source, cols in active_candidates:
+        print(f"[M5] Fitting future-active model: {name} ({feature_source})")
+        train, val, test = _parts(feature_source)
+        model.fit(train[cols], train["future_active_flag"])
         calibrated_candidates = calibrate_prefit_model(
             model,
-            val[feature_cols],
+            val[cols],
             val["future_active_flag"],
             methods=("sigmoid", "isotonic"),
         )
         for method, cal_model in calibrated_candidates.items():
-            val_p = cal_model.predict_proba(val[feature_cols])[:, 1]
-            test_p = cal_model.predict_proba(test[feature_cols])[:, 1]
+            val_p = cal_model.predict_proba(val[cols])[:, 1]
+            test_p = cal_model.predict_proba(test[cols])[:, 1]
             threshold, _ = best_fbeta_threshold(
                 val["future_active_flag"], val_p, beta=f_beta
             )
-            row: Dict[str, Any] = {"active_model": name, "calibration_method": method}
+            row: Dict[str, Any] = {
+                "active_model": name,
+                "calibration_method": method,
+                "feature_source": feature_source,
+            }
             for key, value in evaluate_proba(
                 val["future_active_flag"], val_p, threshold, beta=f_beta
             ).items():
@@ -1067,27 +1254,21 @@ def train_two_part_value_model(
             ).items():
                 row[f"test_{key}"] = value
             active_rows.append(row)
-            active_models[f"{name}__{method}"] = cal_model
+            active_models[f"{name}__{method}"] = (cal_model, feature_source, cols)
+
     active_metrics = (
         pd.DataFrame(active_rows)
         .sort_values(["val_brier_score", "val_PR_AUC"], ascending=[True, False])
         .reset_index(drop=True)
     )
     active_metrics.to_csv(output_dir / "active_model_metrics.csv", index=False)
-    active_key = f"{active_metrics.iloc[0]['active_model']}__{active_metrics.iloc[0]['calibration_method']}"
-    active_champion = active_models[active_key]
+    active_key = (
+        f"{active_metrics.iloc[0]['active_model']}__"
+        f"{active_metrics.iloc[0]['calibration_method']}"
+    )
+    active_champion, active_source, active_cols = active_models[active_key]
 
     # Part 2: value conditional on being future-active.
-    train_pos = train[train["future_active_flag"] == 1].copy()
-    val_pos = val[val["future_active_flag"] == 1].copy()
-    test_pos = test[test["future_active_flag"] == 1].copy()
-    if train_pos.empty:
-        raise ValueError(
-            "No future-active customers in training split; cannot train conditional value model."
-        )
-    y_train = np.log1p(train_pos["discounted_future_revenue_60d"])
-    y_val = np.log1p(val_pos["discounted_future_revenue_60d"])
-    y_test = np.log1p(test_pos["discounted_future_revenue_60d"])
     reg_specs = build_value_regressor_specs(
         linear_preprocess,
         tree_preprocess,
@@ -1098,22 +1279,37 @@ def train_two_part_value_model(
         run_xgboost,
     )
     value_rows: List[Dict[str, Any]] = []
-    value_models: Dict[str, Any] = {}
-    for name, reg in reg_specs:
-        print(f"[M5] Fitting conditional discounted value model: {name}")
-        reg.fit(train_pos[feature_cols], y_train)
-        value_models[name] = reg
-        val_pred = reg.predict(val_pos[feature_cols]) if len(val_pos) else np.array([])
-        test_pred = (
-            reg.predict(test_pos[feature_cols]) if len(test_pos) else np.array([])
+    value_models: Dict[str, Tuple[Any, str, List[str]]] = {}
+    for name, reg, feature_source in reg_specs:
+        cols = feature_cols_by_source[feature_source]
+        train, val, test = _parts(feature_source)
+        train_pos = train[train["future_active_flag"] == 1].copy()
+        val_pos = val[val["future_active_flag"] == 1].copy()
+        test_pos = test[test["future_active_flag"] == 1].copy()
+        if train_pos.empty:
+            raise ValueError(
+                "No future-active customers in training split; cannot train conditional value model."
+            )
+
+        print(
+            f"[M5] Fitting conditional discounted value model: {name} ({feature_source})"
         )
+        y_train = np.log1p(train_pos["discounted_future_revenue_60d"])
+        y_val = np.log1p(val_pos["discounted_future_revenue_60d"])
+        y_test = np.log1p(test_pos["discounted_future_revenue_60d"])
+        reg.fit(train_pos[cols], y_train)
+        value_models[name] = (reg, feature_source, cols)
+        val_pred = reg.predict(val_pos[cols]) if len(val_pos) else np.array([])
+        test_pred = reg.predict(test_pos[cols]) if len(test_pos) else np.array([])
         row: Dict[str, Any] = {
             "value_model": name,
+            "feature_source": feature_source,
             "target": "log1p(discounted_future_revenue_60d | active)",
         }
         row.update(regression_metrics(y_val, val_pred, "val"))
         row.update(regression_metrics(y_test, test_pred, "test"))
         value_rows.append(row)
+
     value_metrics = (
         pd.DataFrame(value_rows)
         .sort_values("val_RMSE_log", ascending=True)
@@ -1121,13 +1317,19 @@ def train_two_part_value_model(
     )
     value_metrics.to_csv(output_dir / "value_model_metrics.csv", index=False)
     value_name = str(value_metrics.iloc[0]["value_model"])
+    value_champion, value_source, value_cols = value_models[value_name]
+
     return (
         active_metrics,
         value_metrics,
         active_champion,
         active_key,
-        value_models[value_name],
+        active_source,
+        active_cols,
+        value_champion,
         value_name,
+        value_source,
+        value_cols,
     )
 
 
@@ -1606,45 +1808,60 @@ def merge_recommendation_metadata(
 
 
 def score_customers(
-    features: pd.DataFrame,
+    features_linear: pd.DataFrame,
+    features_tree: pd.DataFrame,
+    churn_features: pd.DataFrame,
     value_labels: pd.DataFrame,
     churn_model: Any,
     churn_cols: List[str],
     churn_threshold: float,
     active_model: Any,
+    active_model_name: str,
+    active_feature_source: str,
+    active_cols: List[str],
     value_model: Any,
     value_model_name: str,
-    feature_cols: List[str],
+    value_feature_source: str,
+    value_cols: List[str],
     id_col: str,
     target_col: str,
     scenarios: Dict[str, Dict[str, float]],
     paths: Dict[str, Path],
     cut_off_day: int,
     discount_rate: float,
-    active_model_name: str,
     champion_name: str,
     calibration_method: str,
     top_k_shares: Iterable[float],
     decile_count: int,
     recommendation_top_n: int,
 ) -> pd.DataFrame:
-    X = features[feature_cols].copy()
-    y = features[target_col].astype(int).copy()
-    p_churn = churn_model.predict_proba(features[churn_cols])[:, 1]
+    feature_sources = {
+        "linear": features_linear,
+        "tree": features_tree,
+    }
+    if active_feature_source not in feature_sources:
+        raise ValueError(f"Unknown active feature source: {active_feature_source}")
+    if value_feature_source not in feature_sources:
+        raise ValueError(f"Unknown value feature source: {value_feature_source}")
+
+    X_active = feature_sources[active_feature_source][active_cols].copy()
+    X_value = feature_sources[value_feature_source][value_cols].copy()
+    y = churn_features[target_col].astype(int).copy()
+    p_churn = churn_model.predict_proba(churn_features[churn_cols])[:, 1]
     # Raw probability from calibrated wrapper's base model, if available.
     base = getattr(churn_model, "base_model", churn_model)
     try:
-        p_raw = base.predict_proba(features[churn_cols])[:, 1]
+        p_raw = base.predict_proba(churn_features[churn_cols])[:, 1]
     except Exception:
         p_raw = p_churn
-    p_active = active_model.predict_proba(X)[:, 1]
-    value_log = value_model.predict(X)
+    p_active = active_model.predict_proba(X_active)[:, 1]
+    value_log = value_model.predict(X_value)
     value_if_active = np.expm1(np.maximum(value_log, 0))
     expected_value = p_active * value_if_active
     predicted_churn = (p_churn >= churn_threshold).astype(int)
     pred = pd.DataFrame(
         {
-            id_col: features[id_col].astype(int),
+            id_col: churn_features[id_col].astype(int),
             "actual_churn_flag": y,
             "p_churn_raw": p_raw,
             "p_churn_calibrated": p_churn,
@@ -1726,20 +1943,24 @@ def score_customers(
     )
 
     package = {
-        "version_note": "v3_hotfix_profit_ranking",
+        "version_note": "v3_dual_feature_sources_rfecv_ready",
         "cut_off_day": cut_off_day,
-        "feature_cols": feature_cols,
         "champion_churn_model_name": champion_name,
         "calibration_method": calibration_method,
         "champion_threshold_on_calibrated_probability": churn_threshold,
+        "champion_churn_feature_cols": churn_cols,
         "champion_churn_model_for_future_scoring": churn_model,
         "active_model_name": active_model_name,
+        "active_model_feature_source": active_feature_source,
+        "active_model_feature_cols": active_cols,
         "active_model": active_model,
         "conditional_discounted_value_model_name": value_model_name,
+        "conditional_value_model_feature_source": value_feature_source,
+        "conditional_value_model_feature_cols": value_cols,
         "conditional_discounted_value_model": value_model,
         "annual_discount_rate": discount_rate,
         "expected_profit_formula": "p_churn_calibrated * save_rate_given_treatment * predicted_discounted_value_60d_if_active * gross_margin - treatment_cost",
-        "note": "M5 predicts calibrated risk and value for A/B test candidate selection. If base expected profit is non-positive for all customers, priority_rank falls back to risk ranking rather than profit ranking.",
+        "note": "M5 predicts calibrated risk and value for A/B test candidate selection. Linear models use the reduced-collinearity feature table; tree models use the fuller tree feature table.",
     }
     joblib.dump(package, paths["models_dir"] / "model.pkl")
     return pred
@@ -1778,6 +1999,7 @@ def export_shap_outputs(
                 "SHAP exporter currently supports sklearn Pipeline with preprocess/model steps."
             )
         preprocess = model.named_steps["preprocess"]
+        selector = model.named_steps.get("selector")
         estimator = model.named_steps["model"]
         X_all = features[champion_cols].copy()
         n_sample = min(sample_size, len(X_all))
@@ -1786,9 +2008,16 @@ def export_shap_outputs(
         X_bg_t = preprocess.transform(bg)
         X_sample_t = preprocess.transform(sample)
         try:
-            names = [str(x) for x in preprocess.get_feature_names_out()]
+            all_names = [str(x) for x in preprocess.get_feature_names_out()]
         except Exception:
-            names = [f"feature_{i}" for i in range(X_sample_t.shape[1])]
+            all_names = [f"feature_{i}" for i in range(X_sample_t.shape[1])]
+        if selector is not None:
+            support = np.asarray(selector.support_).astype(bool)
+            names = [name for name, keep in zip(all_names, support) if keep]
+            X_bg_t = selector.transform(X_bg_t)
+            X_sample_t = selector.transform(X_sample_t)
+        else:
+            names = all_names
         if hasattr(estimator, "coef_"):
             explainer = shap.LinearExplainer(estimator, X_bg_t, feature_names=names)
             explanation = explainer(X_sample_t)
@@ -1841,6 +2070,8 @@ def export_shap_outputs(
                 continue
             x_orig = features.iloc[[id_to_row[hh]]][champion_cols]
             x_t = preprocess.transform(x_orig)
+            if selector is not None:
+                x_t = selector.transform(x_t)
             if hasattr(estimator, "coef_"):
                 ev = explainer(x_t)
                 vals = np.asarray(ev.values)
@@ -2069,10 +2300,10 @@ def write_report_outline(
     md = f"""# M5 Modeling Report Outline — v3
 
 ## Role
-M5 receives M4's delivered feature table and builds a risk/value/profit ranking for M6. M5 does not claim treatment causality; M6 validates causal lift through A/B testing.
+M5 receives M4's delivered linear/tree feature tables and builds a risk/value/profit ranking for M6. M5 does not claim treatment causality; M6 validates causal lift through A/B testing.
 
 ## Methodology
-- Input feature table: `models/final_ML_features.csv` from M4.
+- Input feature tables from M4: `models/final_ML_features_linear.csv` for linear/RFECV/Ridge-style models and `models/final_ML_features_tree.csv` for tree-based models.
 - `household_key` is kept only as an identifier and excluded from training.
 - Churn is interpreted as an operational retail churn label, not a formal cancellation event.
 - Churn models are benchmarked with PR-AUC and F2-score because the churn class is imbalanced.
@@ -2115,7 +2346,7 @@ If no customers have positive expected profit under the base scenario, `priority
 {chr(10).join([f"- {x}" for x in shap_top]) if shap_top else "- SHAP was skipped or unavailable; use `models/feature_importance.csv` as fallback."}
 
 ## Important limitations
-- M5 uses M4's current feature table as-is. A separate M4 feature lineage audit is still recommended.
+- M5 uses M4's current dual feature tables as-is. A separate M4 feature lineage audit is still recommended.
 - Discounted 60-day value is not true lifetime CLV.
 - SHAP and feature importance are associations, not causal treatment effects.
 - Seasonality is audited, but not fully modeled as a time-series forecasting problem.
@@ -2228,7 +2459,7 @@ config/paths.yaml
   -> scripts/utils.py resolves paths
   -> scripts/modeling.py runs the full pipeline
   -> scripts/evaluation.py provides metrics/helpers
-  -> models/final_ML_features.csv is the M4 handoff
+  -> models/final_ML_features_linear.csv and models/final_ML_features_tree.csv are the M4 handoff tables
   -> Data/Processed/transactions_master.parquet builds discounted value labels and seasonality audit
   -> models/reports/*.csv contains report summaries
   -> models/m6_handoff/*.csv contains customer-level files for M6
@@ -2413,39 +2644,75 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
     shap_top_n = int(shap_cfg.get("shap_top_n_customers", 30))
 
     print("[M5] Project root:", project_root)
-    features = load_feature_table(
-        paths["feature_table_csv"], id_col, target_col, categorical_cols
+    linear_feature_path = paths.get(
+        "feature_table_linear_csv", paths["feature_table_csv"]
     )
-    audit_inputs(features, paths, id_col, target_col, cut_off_day)
-    features.to_parquet(paths["models_dir"] / "final_features.parquet", index=False)
-    feature_cols = [c for c in features.columns if c not in [id_col, target_col]]
-    cat_cols = [c for c in categorical_cols if c in feature_cols]
-    num_cols = [c for c in feature_cols if c not in cat_cols]
-    split = prepare_splits(
-        features,
+    tree_feature_path = paths.get("feature_table_tree_csv", paths["feature_table_csv"])
+
+    features_linear = load_feature_table(
+        linear_feature_path, id_col, target_col, categorical_cols
+    )
+    features_tree = load_feature_table(
+        tree_feature_path, id_col, target_col, categorical_cols
+    )
+    features_linear, features_tree = align_dual_feature_tables(
+        features_linear,
+        features_tree,
         id_col,
         target_col,
-        feature_cols,
+    )
+    print(
+        "[M5] Feature sources:",
+        f"linear={linear_feature_path.name} ({features_linear.shape[1]} cols),",
+        f"tree={tree_feature_path.name} ({features_tree.shape[1]} cols)",
+    )
+
+    audit_inputs(features_linear, paths, id_col, target_col, cut_off_day)
+    features_linear.to_parquet(
+        paths["models_dir"] / "final_features.parquet", index=False
+    )
+
+    linear_feature_cols = [
+        c for c in features_linear.columns if c not in [id_col, target_col]
+    ]
+    tree_feature_cols = [
+        c for c in features_tree.columns if c not in [id_col, target_col]
+    ]
+
+    cat_cols_linear = [c for c in categorical_cols if c in linear_feature_cols]
+    num_cols_linear = [c for c in linear_feature_cols if c not in cat_cols_linear]
+    cat_cols_tree = [c for c in categorical_cols if c in tree_feature_cols]
+    num_cols_tree = [c for c in tree_feature_cols if c not in cat_cols_tree]
+
+    split = prepare_dual_source_splits(
+        features_linear,
+        features_tree,
+        id_col,
+        target_col,
+        linear_feature_cols,
+        tree_feature_cols,
         test_size,
         validation_size,
         random_state,
     )
-    linear_pre, tree_pre = build_preprocessors(num_cols, cat_cols)
+    linear_pre, _ = build_preprocessors(num_cols_linear, cat_cols_linear)
+    _, tree_pre = build_preprocessors(num_cols_tree, cat_cols_tree)
     scale_pos_weight = float(
         (split["y_train"] == 0).sum() / max((split["y_train"] == 1).sum(), 1)
     )
-
     specs = build_classifier_specs(
-        linear_pre,
-        tree_pre,
-        feature_cols,
-        scale_pos_weight,
-        random_state,
-        n_jobs,
-        run_xgboost,
-        run_tree_baselines,
+        linear_preprocess=linear_pre,
+        tree_preprocess=tree_pre,
+        linear_feature_cols=linear_feature_cols,
+        tree_feature_cols=tree_feature_cols,
+        scale_pos_weight=scale_pos_weight,
+        random_state=random_state,
+        n_jobs=n_jobs,
+        run_xgboost=run_xgboost,
+        run_tree_baselines=run_tree_baselines,
+        cv_folds=cv_folds,
     )
-    smote = build_smote_baseline(num_cols, random_state) if run_smote else None
+    smote = build_smote_baseline(num_cols_linear, random_state) if run_smote else None
     metrics, _tuning, fitted = tune_and_benchmark_classifiers(
         specs,
         split,
@@ -2462,31 +2729,55 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
         threshold,
         churn_model,
         churn_cols,
+        churn_feature_source,
         cal_summary,
     ) = select_calibrated_churn_model(
         metrics, fitted, split, paths["models_dir"], f_beta
     )
+    churn_features = (
+        features_linear if churn_feature_source == "linear" else features_tree
+    )
     importance = export_feature_importance(churn_model, churn_cols, paths["models_dir"])
 
-    value_labels = build_discounted_value_labels(
-        features,
+    value_labels_linear = build_discounted_value_labels(
+        features_linear,
         paths,
         id_col,
         cut_off_day,
         prediction_horizon_days,
         annual_discount_rate,
     )
+    value_label_cols = [
+        "future_revenue_60d",
+        "discounted_future_revenue_60d",
+        "future_txn_count_60d",
+        "first_future_day",
+        "last_future_day",
+        "future_active_flag",
+        "annual_discount_rate",
+        "value_horizon_start_day",
+        "value_horizon_end_day",
+    ]
+    value_labels_tree = features_tree.merge(
+        value_labels_linear[[id_col, *value_label_cols]], on=id_col, how="left"
+    )
     (
         active_metrics,
         value_metrics,
         active_model,
         active_model_name,
+        active_feature_source,
+        active_cols,
         value_model,
         value_model_name,
+        value_feature_source,
+        value_cols,
     ) = train_two_part_value_model(
-        value_labels,
+        value_labels_linear,
+        value_labels_tree,
         split,
-        feature_cols,
+        linear_feature_cols,
+        tree_feature_cols,
         linear_pre,
         tree_pre,
         paths["models_dir"],
@@ -2499,24 +2790,29 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
         run_xgboost,
     )
     predictions = score_customers(
-        features,
-        value_labels,
-        churn_model,
-        churn_cols,
-        threshold,
-        active_model,
-        value_model,
-        value_model_name,
-        feature_cols,
-        id_col,
-        target_col,
-        config["expected_profit_scenarios"],
-        paths,
-        cut_off_day,
-        annual_discount_rate,
-        active_model_name,
-        champion_name,
-        calibration_method,
+        features_linear=features_linear,
+        features_tree=features_tree,
+        churn_features=churn_features,
+        value_labels=value_labels_linear,
+        churn_model=churn_model,
+        churn_cols=churn_cols,
+        churn_threshold=threshold,
+        active_model=active_model,
+        active_model_name=active_model_name,
+        active_feature_source=active_feature_source,
+        active_cols=active_cols,
+        value_model=value_model,
+        value_model_name=value_model_name,
+        value_feature_source=value_feature_source,
+        value_cols=value_cols,
+        id_col=id_col,
+        target_col=target_col,
+        scenarios=config["expected_profit_scenarios"],
+        paths=paths,
+        cut_off_day=cut_off_day,
+        discount_rate=annual_discount_rate,
+        champion_name=champion_name,
+        calibration_method=calibration_method,
         top_k_shares=config.get("evaluation", {}).get(
             "top_k_shares", [0.05, 0.10, 0.20]
         ),
@@ -2532,7 +2828,7 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
         export_shap_outputs(
             churn_model,
             churn_cols,
-            features,
+            churn_features,
             predictions,
             paths,
             shap_sample_size,
@@ -2553,16 +2849,21 @@ def run_m5_pipeline(config_path: str | Path | None = None) -> Dict[str, Any]:
     summary = {
         "version": "v3_discounted_two_part_value_shap_seasonality",
         "project_root": str(project_root),
-        "feature_rows": int(len(features)),
-        "churn_rate": float(features[target_col].mean()),
+        "feature_rows": int(len(features_linear)),
+        "churn_rate": float(features_linear[target_col].mean()),
         "champion_churn_model": champion_name,
+        "champion_churn_feature_source": churn_feature_source,
         "calibration_method": calibration_method,
         "champion_threshold": float(threshold),
         "test_PR_AUC_calibrated": float(selected["test_PR_AUC"]),
         "test_F2_score_calibrated": float(selected["test_F2_score"]),
         "test_brier_score_calibrated": float(selected["test_brier_score"]),
         "active_model": active_model_name,
+        "active_model_feature_source": active_feature_source,
         "value_model": value_model_name,
+        "value_model_feature_source": value_feature_source,
+        "linear_feature_columns": int(len(linear_feature_cols)),
+        "tree_feature_columns": int(len(tree_feature_cols)),
         "annual_discount_rate": annual_discount_rate,
         "base_profitable_customers": int(
             predictions.get("profitable_to_treat_base", pd.Series(dtype=bool)).sum()

@@ -240,7 +240,10 @@ def main() -> None:
     cv_folds = int(psm_cfg.get("cv_folds", 5))
     exclude_keywords = list(psm_cfg.get("exclude_feature_keywords", []))
 
-    feature_path = paths["feature_table_csv"]
+    feature_path = paths.get(
+        "psm_feature_table_csv",
+        paths.get("feature_table_linear_csv", paths["feature_table_csv"]),
+    )
     treatment_path = paths.get("psm_treatment_flags_csv", project_root / "models" / "psm_inputs" / "psm_treatment_flags.csv")
     output_scores_path = _resolve_output_path(
         psm_cfg.get("output_propensity_scores_csv", "models/m6_handoff/propensity_scores_for_psm.csv"),
@@ -268,7 +271,7 @@ def main() -> None:
         missing_count = len(features) - len(df)
         raise ValueError(
             f"Treatment flags do not cover all feature rows. Missing rows after merge: {missing_count}. "
-            "Ask M4 to include every household_key from final_ML_features.csv."
+            "Ask M4 to include every household_key from the configured PSM feature table."
         )
 
     covariates = select_covariates(df, id_col, target_col, treatment_col, exclude_keywords)
