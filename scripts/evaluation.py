@@ -260,15 +260,23 @@ def regression_metrics(y_true_log: Iterable[float], pred_log: Iterable[float], p
 
 
 def get_feature_names_from_pipeline(pipeline: Any, original_columns: List[str]) -> List[str]:
-    """Best-effort extraction of transformed feature names from a sklearn pipeline."""
+    """Best-effort extraction of transformed feature names from a sklearn pipeline.
+
+    Supports optional RFECV/selectors placed after the preprocess step.
+    """
     if not hasattr(pipeline, "named_steps") or "preprocess" not in pipeline.named_steps:
         return original_columns
     preprocess = pipeline.named_steps["preprocess"]
     try:
-        names = preprocess.get_feature_names_out()
-        return [str(x) for x in names]
+        names = [str(x) for x in preprocess.get_feature_names_out()]
     except Exception:
-        return original_columns
+        names = list(original_columns)
+    selector = pipeline.named_steps.get("selector") if hasattr(pipeline, "named_steps") else None
+    if selector is not None and hasattr(selector, "support_"):
+        support = np.asarray(selector.support_).astype(bool)
+        if len(support) == len(names):
+            names = [name for name, keep in zip(names, support) if keep]
+    return names
 
 
 def extract_feature_importance(model: Any, original_columns: List[str]) -> pd.DataFrame:

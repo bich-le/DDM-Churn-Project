@@ -18,6 +18,8 @@ paths:
   models_psm_inputs_dir: models/psm_inputs
 inputs:
   feature_table_csv: models/final_ML_features.csv
+  feature_table_linear_csv: models/final_ML_features_linear.csv
+  feature_table_tree_csv: models/final_ML_features_tree.csv
   transaction_master_parquet: Data/Processed/transactions_master.parquet
   customer_base_parquet: Data/Processed/customer_base_labeled.parquet
   voucher_recommendations_csv: Data/Intermediate/market_basket/personalized_voucher_recommendations.csv
